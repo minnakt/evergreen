@@ -3525,24 +3525,65 @@ func getTasksByVersionPipeline(versionID string, opts GetTasksByVersionOptions) 
 		addDisplayStatus,
 	)
 	if opts.IncludeBaseTasks {
+		// Add generated_by_name field if a corresponding generator task exists.
+		pipeline = append(pipeline, []bson.M{
+			{"$lookup": bson.M{
+				"from": Collection,
+				"let": bson.M{
+					GeneratedByKey: "$" + GeneratedByKey,
+				},
+				"as": "generated_by_name",
+				"pipeline": []bson.M{
+					{"$match": bson.M{
+						"$expr": bson.M{
+							"$eq": []string{"$" + IdKey, "$$" + GeneratedByKey},
+						},
+					}},
+					{"$project": bson.M{
+						IdKey:          0,
+						DisplayNameKey: 1,
+					}},
+					{"$limit": 1},
+				},
+			}},
+			{
+				"$unwind": bson.M{
+					"path":                       "$generated_by_name",
+					"preserveNullAndEmptyArrays": true,
+				},
+			},
+			{
+				"$set": bson.M{"generated_by_name": "$generated_by_name.display_name"},
+			},
+		}...,
+		)
+
 		pipeline = append(pipeline, []bson.M{
 			// Add data about the base task
 			{"$lookup": bson.M{
 				"from": Collection,
 				"let": bson.M{
-					RevisionKey:     "$" + RevisionKey,
-					BuildVariantKey: "$" + BuildVariantKey,
-					DisplayNameKey:  "$" + DisplayNameKey,
+					RevisionKey:         "$" + RevisionKey,
+					BuildVariantKey:     "$" + BuildVariantKey,
+					DisplayNameKey:      "$" + DisplayNameKey,
+					"generated_by_name": "$generated_by_name",
 				},
 				"as": BaseTaskKey,
 				"pipeline": []bson.M{
 					{"$match": bson.M{
 						RequesterKey: evergreen.RepotrackerVersionRequester,
 						"$expr": bson.M{
-							"$and": []bson.M{
-								{"$eq": []string{"$" + RevisionKey, "$$" + RevisionKey}},
-								{"$eq": []string{"$" + BuildVariantKey, "$$" + BuildVariantKey}},
-								{"$eq": []string{"$" + DisplayNameKey, "$$" + DisplayNameKey}},
+							"$or": []bson.M{
+								{"$and": []bson.M{
+									{"$eq": []string{"$" + RevisionKey, "$$" + RevisionKey}},
+									{"$eq": []string{"$" + BuildVariantKey, "$$" + BuildVariantKey}},
+									{"$eq": []string{"$" + DisplayNameKey, "$$" + DisplayNameKey}},
+								}},
+								{"$and": []bson.M{
+									{"$eq": []string{"$" + RevisionKey, "$$" + RevisionKey}},
+									{"$eq": []string{"$" + BuildVariantKey, "$$" + BuildVariantKey}},
+									{"$eq": []string{"$" + DisplayNameKey, "$$generated_by_name"}},
+								}},
 							},
 						},
 					}},
