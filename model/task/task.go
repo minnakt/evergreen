@@ -3519,83 +3519,143 @@ func getTasksByVersionPipeline(versionID string, opts GetTasksByVersionOptions) 
 		addDisplayStatus,
 	)
 	if opts.IncludeBaseTasks {
-		// Add generated_by_name field if a corresponding generator task exists.
-		pipeline = append(pipeline, []bson.M{
-			{"$lookup": bson.M{
-				"from": Collection,
-				"let": bson.M{
-					GeneratedByKey: "$" + GeneratedByKey,
-				},
-				"as": "generated_by_name",
-				"pipeline": []bson.M{
-					{"$match": bson.M{
-						"$expr": bson.M{
-							"$eq": []string{"$" + IdKey, "$$" + GeneratedByKey},
+		baseTaskFacet := bson.M{
+			"$facet": bson.M{
+				// For generated tasks, it's possible they didn't run on the base commit.
+				// In this case we need to use the generated_by key which contains the generator task id
+				// to lookup the generator task display name.
+				// Then we need to do another lookup for the generated task or its generator task on the
+				// base commit.
+				"generated_base": []bson.M{
+					{
+						"$match": bson.M{
+							GeneratedByKey: bson.M{"$exists": true},
+						},
+					},
+					{"$lookup": bson.M{
+						"from": Collection,
+						"let": bson.M{
+							GeneratedByKey: "$" + GeneratedByKey,
+						},
+						"as": "generated_by_name",
+						"pipeline": []bson.M{
+							{"$match": bson.M{
+								"$expr": bson.M{
+									"$eq": []string{"$" + IdKey, "$$" + GeneratedByKey},
+								},
+							}},
+							{"$project": bson.M{
+								IdKey:          0,
+								DisplayNameKey: 1,
+							}},
+							{"$limit": 1},
 						},
 					}},
-					{"$project": bson.M{
-						IdKey:          0,
-						DisplayNameKey: 1,
+					{
+						"$unwind": bson.M{
+							"path":                       "$generated_by_name",
+							"preserveNullAndEmptyArrays": true,
+						},
+					},
+					{
+						"$set": bson.M{"generated_by_name": "$generated_by_name.display_name"},
+					},
+					{"$lookup": bson.M{
+						"from": Collection,
+						"let": bson.M{
+							RevisionKey:         "$" + RevisionKey,
+							BuildVariantKey:     "$" + BuildVariantKey,
+							DisplayNameKey:      "$" + DisplayNameKey,
+							"generated_by_name": "$generated_by_name",
+						},
+						"as": BaseTaskKey,
+						"pipeline": []bson.M{
+							{"$match": bson.M{
+								RequesterKey: evergreen.RepotrackerVersionRequester,
+								"$expr": bson.M{
+									"$or": []bson.M{
+										{"$and": []bson.M{
+											{"$eq": []string{"$" + RevisionKey, "$$" + RevisionKey}},
+											{"$eq": []string{"$" + BuildVariantKey, "$$" + BuildVariantKey}},
+											{"$eq": []string{"$" + DisplayNameKey, "$$generated_by_name"}},
+										}},
+										{"$and": []bson.M{
+											{"$eq": []string{"$" + RevisionKey, "$$" + RevisionKey}},
+											{"$eq": []string{"$" + BuildVariantKey, "$$" + BuildVariantKey}},
+											{"$eq": []string{"$" + DisplayNameKey, "$$" + DisplayNameKey}},
+										}},
+									},
+								},
+							}},
+							{"$project": bson.M{
+								IdKey:     1,
+								StatusKey: displayStatusExpression,
+							}},
+							{"$limit": 1},
+						},
 					}},
-					{"$limit": 1},
+					{
+						"$unwind": bson.M{
+							"path":                       "$" + BaseTaskKey,
+							"preserveNullAndEmptyArrays": true,
+						},
+					},
 				},
-			}},
-			{
-				"$unwind": bson.M{
-					"path":                       "$generated_by_name",
-					"preserveNullAndEmptyArrays": true,
+				// for non-generated tasks we can just look up the base task as normal
+				"normal_base": []bson.M{
+					{
+						"$match": bson.M{
+							GeneratedByKey: bson.M{"$exists": false},
+						},
+					},
+					{"$lookup": bson.M{
+						"from": Collection,
+						"let": bson.M{
+							RevisionKey:     "$" + RevisionKey,
+							BuildVariantKey: "$" + BuildVariantKey,
+							DisplayNameKey:  "$" + DisplayNameKey,
+						},
+						"as": BaseTaskKey,
+						"pipeline": []bson.M{
+							{"$match": bson.M{
+								RequesterKey: evergreen.RepotrackerVersionRequester,
+								"$expr": bson.M{
+									"$and": []bson.M{
+										{"$eq": []string{"$" + RevisionKey, "$$" + RevisionKey}},
+										{"$eq": []string{"$" + BuildVariantKey, "$$" + BuildVariantKey}},
+										{"$eq": []string{"$" + DisplayNameKey, "$$" + DisplayNameKey}},
+									},
+								},
+							}},
+							{"$project": bson.M{
+								IdKey:     1,
+								StatusKey: displayStatusExpression,
+							}},
+							{"$limit": 1},
+						},
+					}},
+					{
+						"$unwind": bson.M{
+							"path":                       "$" + BaseTaskKey,
+							"preserveNullAndEmptyArrays": true,
+						},
+					},
 				},
 			},
-			{
-				"$set": bson.M{"generated_by_name": "$generated_by_name.display_name"},
-			},
-		}...,
-		)
+		}
+		pipeline = append(pipeline, baseTaskFacet)
 
-		pipeline = append(pipeline, []bson.M{
-			// Add data about the base task
-			{"$lookup": bson.M{
-				"from": Collection,
-				"let": bson.M{
-					RevisionKey:         "$" + RevisionKey,
-					BuildVariantKey:     "$" + BuildVariantKey,
-					DisplayNameKey:      "$" + DisplayNameKey,
-					"generated_by_name": "$generated_by_name",
-				},
-				"as": BaseTaskKey,
-				"pipeline": []bson.M{
-					{"$match": bson.M{
-						RequesterKey: evergreen.RepotrackerVersionRequester,
-						"$expr": bson.M{
-							"$or": []bson.M{
-								{"$and": []bson.M{
-									{"$eq": []string{"$" + RevisionKey, "$$" + RevisionKey}},
-									{"$eq": []string{"$" + BuildVariantKey, "$$" + BuildVariantKey}},
-									{"$eq": []string{"$" + DisplayNameKey, "$$" + DisplayNameKey}},
-								}},
-								{"$and": []bson.M{
-									{"$eq": []string{"$" + RevisionKey, "$$" + RevisionKey}},
-									{"$eq": []string{"$" + BuildVariantKey, "$$" + BuildVariantKey}},
-									{"$eq": []string{"$" + DisplayNameKey, "$$generated_by_name"}},
-								}},
-							},
-						},
-					}},
-					{"$project": bson.M{
-						IdKey:     1,
-						StatusKey: displayStatusExpression,
-					}},
-					{"$limit": 1},
-				},
-			}},
-			{
-				"$unwind": bson.M{
-					"path":                       "$" + BaseTaskKey,
-					"preserveNullAndEmptyArrays": true,
-				},
+		// Recombine the tasks so that we can continue the pipeline on the joined tasks
+		recombineTasks := []bson.M{
+			{"$project": bson.M{
+				"tasks": bson.M{
+					"$setUnion": []string{"$generated_base", "$normal_base"},
+				}},
 			},
-		}...,
-		)
+			{"$unwind": "$tasks"},
+			{"$replaceRoot": bson.M{"newRoot": "$tasks"}},
+		}
+		pipeline = append(pipeline, recombineTasks...)
 	}
 	// Add the build variant display name to the returned subset of results if it wasn't added earlier
 	if len(opts.Variants) == 0 && opts.IncludeBuildVariantDisplayName {

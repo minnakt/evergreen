@@ -3472,16 +3472,16 @@ func (r *taskResolver) BaseTask(ctx context.Context, obj *restModel.APITask) (*r
 	}
 
 	// // if the task was generated and doesn't exist on the base, then resolve here.
-	if baseTask == nil && t.GeneratedBy != "" {
-		generatorTask, err := task.FindOneId(t.GeneratedBy)
-		if err != nil {
-			return nil, InternalServerError.Send(ctx, fmt.Sprintf("Error finding generator task %s: %s", t.GeneratedBy, err.Error()))
-		}
-		baseTask, err = generatorTask.FindTaskOnBaseCommit()
-		if err != nil {
-			return nil, InternalServerError.Send(ctx, fmt.Sprintf("Error finding task %s on base commit: %s", *obj.Id, err.Error()))
-		}
-	}
+	// if baseTask == nil && t.GeneratedBy != "" {
+	// 	generatorTask, err := task.FindOneId(t.GeneratedBy)
+	// 	if err != nil {
+	// 		return nil, InternalServerError.Send(ctx, fmt.Sprintf("Error finding generator task %s: %s", t.GeneratedBy, err.Error()))
+	// 	}
+	// 	baseTask, err = generatorTask.FindTaskOnBaseCommit()
+	// 	if err != nil {
+	// 		return nil, InternalServerError.Send(ctx, fmt.Sprintf("Error finding task %s on base commit: %s", *obj.Id, err.Error()))
+	// 	}
+	// }
 
 	if baseTask == nil {
 		return nil, nil
