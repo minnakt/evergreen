@@ -1,0 +1,16 @@
+# Define the base types for Query & Mutation here so that other files can extend them.
+type Query
+
+type Mutation
+
+# Define scalars used in other files.
+scalar Time
+scalar Duration
+scalar StringMap
+scalar Map
+
+# Define shared enums.
+enum SortDirection {
+  ASC
+  DESC
+}

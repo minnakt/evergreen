@@ -4,14 +4,17 @@
 # for detailed .gqlgen.yml documentation.
 
 schema:
-  - graphql/schema.graphql
+  - graphql/schema/*.graphql
 exec:
   filename: graphql/generated.go
 model:
-  filename: graphql/models_gen.go
+  filename: graphql/model/models_gen.go
+  package: model
 resolver:
-  filename: graphql/resolvers.go
-  type: Resolver
+  layout: follow-schema
+  dir: graphql/resolvers
+  package: resolvers
+  filename_template: "{name}.resolvers.go"
 models:
   Build:
     model: github.com/evergreen-ci/evergreen/rest/model.APIBuild
