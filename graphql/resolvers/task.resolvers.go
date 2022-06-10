@@ -28,7 +28,7 @@ import (
 	restModel "github.com/evergreen-ci/evergreen/rest/model"
 	"github.com/evergreen-ci/gimlet"
 	"github.com/evergreen-ci/utility"
-	"github.com/pkg/errors"
+	werrors "github.com/pkg/errors"
 )
 
 func (r *mutationResolver) AbortTask(ctx context.Context, taskID string) (*restModel.APITask, error) {
@@ -151,7 +151,7 @@ func (r *queryResolver) Task(ctx context.Context, taskID string, execution *int)
 		return nil, gqlError.ResourceNotFound.Send(ctx, err.Error())
 	}
 	if dbTask == nil {
-		return nil, errors.Errorf("unable to find task %s", taskID)
+		return nil, werrors.Errorf("unable to find task %s", taskID)
 	}
 	apiTask, err := util.GetAPITaskFromTask(ctx, r.sc.GetURL(), *dbTask)
 	if err != nil {
@@ -166,7 +166,7 @@ func (r *queryResolver) TaskAllExecutions(ctx context.Context, taskID string) ([
 		return nil, gqlError.ResourceNotFound.Send(ctx, err.Error())
 	}
 	if latestTask == nil {
-		return nil, errors.Errorf("unable to find task %s", taskID)
+		return nil, werrors.Errorf("unable to find task %s", taskID)
 	}
 	allTasks := []*restModel.APITask{}
 	for i := 0; i < latestTask.Execution; i++ {
@@ -176,7 +176,7 @@ func (r *queryResolver) TaskAllExecutions(ctx context.Context, taskID string) ([
 			return nil, gqlError.ResourceNotFound.Send(ctx, err.Error())
 		}
 		if dbTask == nil {
-			return nil, errors.Errorf("unable to find task %s", taskID)
+			return nil, werrors.Errorf("unable to find task %s", taskID)
 		}
 		var apiTask *restModel.APITask
 		apiTask, err = util.GetAPITaskFromTask(ctx, r.sc.GetURL(), *dbTask)
@@ -398,7 +398,7 @@ func (r *queryResolver) TaskTests(ctx context.Context, taskID string, execution 
 	}, nil
 }
 
-func (r *queryResolver) TaskTestSample(ctx context.Context, tasks []string, testFilters []*gqlModel.TestFilter) ([]*gqlModel.TaskTestResultSample, error) {
+func (r *queryResolver) TaskTestSample(ctx context.Context, tasks []string, filters []*gqlModel.TestFilter) ([]*gqlModel.TaskTestResultSample, error) {
 	const testSampleLimit = 10
 	if len(tasks) == 0 {
 		return nil, nil
@@ -415,7 +415,7 @@ func (r *queryResolver) TaskTestSample(ctx context.Context, tasks []string, test
 	// We can assume that if one of the tasks has cedar results, all of them do.
 	if dbTasks[0].HasCedarResults {
 		failingTests := []string{}
-		for _, f := range testFilters {
+		for _, f := range filters {
 			failingTests = append(failingTests, f.TestName)
 		}
 
@@ -433,11 +433,11 @@ func (r *queryResolver) TaskTestSample(ctx context.Context, tasks []string, test
 			testResultsToReturn = append(testResultsToReturn, tr)
 		}
 	} else {
-		filters := []string{}
-		for _, f := range testFilters {
-			filters = append(filters, f.TestName)
+		testFilters := []string{}
+		for _, f := range filters {
+			testFilters = append(testFilters, f.TestName)
 		}
-		regexFilter := strings.Join(filters, "|")
+		regexFilter := strings.Join(testFilters, "|")
 		for _, t := range dbTasks {
 			filteredTestResults, err := r.sc.FindTestsByTaskId(data.FindTestsByTaskIdOpts{
 				TaskID:         t.Id,
@@ -1193,10 +1193,10 @@ func (r *taskLogsResolver) TaskLogs(ctx context.Context, obj *gqlModel.TaskLogs)
 	return taskLogPointers, nil
 }
 
-// Task returns gql.TaskResolver implementation.
+// Task returns generated.TaskResolver implementation.
 func (r *Resolver) Task() generated.TaskResolver { return &taskResolver{r} }
 
-// TaskLogs returns gql.TaskLogsResolver implementation.
+// TaskLogs returns generated.TaskLogsResolver implementation.
 func (r *Resolver) TaskLogs() generated.TaskLogsResolver { return &taskLogsResolver{r} }
 
 type taskResolver struct{ *Resolver }

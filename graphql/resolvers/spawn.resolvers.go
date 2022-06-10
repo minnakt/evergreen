@@ -25,7 +25,7 @@ import (
 	"github.com/evergreen-ci/utility"
 	"github.com/mongodb/grip"
 	"github.com/mongodb/grip/message"
-	"github.com/pkg/errors"
+	werrors "github.com/pkg/errors"
 )
 
 func (r *mutationResolver) AttachVolumeToHost(ctx context.Context, volumeAndHost gqlModel.VolumeHost) (bool, error) {
@@ -44,10 +44,10 @@ func (r *mutationResolver) DetachVolumeFromHost(ctx context.Context, volumeID st
 	return statusCode == http.StatusOK, nil
 }
 
-func (r *mutationResolver) EditSpawnHost(ctx context.Context, editSpawnHostInput *gqlModel.EditSpawnHostInput) (*restModel.APIHost, error) {
+func (r *mutationResolver) EditSpawnHost(ctx context.Context, spawnHost *gqlModel.EditSpawnHostInput) (*restModel.APIHost, error) {
 	var v *host.Volume
 	usr := util.MustHaveUser(ctx)
-	h, err := host.FindOneByIdOrTag(editSpawnHostInput.HostID)
+	h, err := host.FindOneByIdOrTag(spawnHost.HostID)
 	if err != nil {
 		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error finding host by id: %s", err))
 	}
@@ -57,19 +57,19 @@ func (r *mutationResolver) EditSpawnHost(ctx context.Context, editSpawnHostInput
 	}
 
 	opts := host.HostModifyOptions{}
-	if editSpawnHostInput.DisplayName != nil {
-		opts.NewName = *editSpawnHostInput.DisplayName
+	if spawnHost.DisplayName != nil {
+		opts.NewName = *spawnHost.DisplayName
 	}
-	if editSpawnHostInput.NoExpiration != nil {
-		opts.NoExpiration = editSpawnHostInput.NoExpiration
+	if spawnHost.NoExpiration != nil {
+		opts.NoExpiration = spawnHost.NoExpiration
 	}
-	if editSpawnHostInput.Expiration != nil {
-		err = h.SetExpirationTime(*editSpawnHostInput.Expiration)
+	if spawnHost.Expiration != nil {
+		err = h.SetExpirationTime(*spawnHost.Expiration)
 		if err != nil {
 			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error while modifying spawnhost expiration time: %s", err))
 		}
 	}
-	if editSpawnHostInput.InstanceType != nil {
+	if spawnHost.InstanceType != nil {
 		var config *evergreen.Settings
 		config, err = evergreen.GetConfig()
 		if err != nil {
@@ -77,54 +77,54 @@ func (r *mutationResolver) EditSpawnHost(ctx context.Context, editSpawnHostInput
 		}
 		allowedTypes := config.Providers.AWS.AllowedInstanceTypes
 
-		err = cloud.CheckInstanceTypeValid(ctx, h.Distro, *editSpawnHostInput.InstanceType, allowedTypes)
+		err = cloud.CheckInstanceTypeValid(ctx, h.Distro, *spawnHost.InstanceType, allowedTypes)
 		if err != nil {
 			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error validating instance type: %s", err))
 		}
-		opts.InstanceType = *editSpawnHostInput.InstanceType
+		opts.InstanceType = *spawnHost.InstanceType
 	}
-	if editSpawnHostInput.AddedInstanceTags != nil || editSpawnHostInput.DeletedInstanceTags != nil {
+	if spawnHost.AddedInstanceTags != nil || spawnHost.DeletedInstanceTags != nil {
 		addedTags := []host.Tag{}
 		deletedTags := []string{}
-		for _, tag := range editSpawnHostInput.AddedInstanceTags {
+		for _, tag := range spawnHost.AddedInstanceTags {
 			tag.CanBeModified = true
 			addedTags = append(addedTags, *tag)
 		}
-		for _, tag := range editSpawnHostInput.DeletedInstanceTags {
+		for _, tag := range spawnHost.DeletedInstanceTags {
 			deletedTags = append(deletedTags, tag.Key)
 		}
 		opts.AddInstanceTags = addedTags
 		opts.DeleteInstanceTags = deletedTags
 	}
-	if editSpawnHostInput.Volume != nil {
-		v, err = host.FindVolumeByID(*editSpawnHostInput.Volume)
+	if spawnHost.Volume != nil {
+		v, err = host.FindVolumeByID(*spawnHost.Volume)
 		if err != nil {
 			return nil, gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("Error finding requested volume id: %s", err))
 		}
 		if v.AvailabilityZone != h.Zone {
 			return nil, gqlError.InputValidationError.Send(ctx, "Error mounting volume to spawn host, They must be in the same availability zone.")
 		}
-		opts.AttachVolume = *editSpawnHostInput.Volume
+		opts.AttachVolume = *spawnHost.Volume
 	}
-	if editSpawnHostInput.PublicKey != nil {
-		if utility.FromBoolPtr(editSpawnHostInput.SavePublicKey) {
-			if err = util.SavePublicKey(ctx, *editSpawnHostInput.PublicKey); err != nil {
+	if spawnHost.PublicKey != nil {
+		if utility.FromBoolPtr(spawnHost.SavePublicKey) {
+			if err = util.SavePublicKey(ctx, *spawnHost.PublicKey); err != nil {
 				return nil, err
 			}
 		}
-		opts.AddKey = editSpawnHostInput.PublicKey.Key
+		opts.AddKey = spawnHost.PublicKey.Key
 		if opts.AddKey == "" {
-			opts.AddKey, err = usr.GetPublicKey(editSpawnHostInput.PublicKey.Name)
+			opts.AddKey, err = usr.GetPublicKey(spawnHost.PublicKey.Name)
 			if err != nil {
-				return nil, gqlError.InputValidationError.Send(ctx, fmt.Sprintf("No matching key found for name '%s'", editSpawnHostInput.PublicKey.Name))
+				return nil, gqlError.InputValidationError.Send(ctx, fmt.Sprintf("No matching key found for name '%s'", spawnHost.PublicKey.Name))
 			}
 		}
 	}
 	if err = cloud.ModifySpawnHost(ctx, evergreen.GetEnvironment(), h, opts); err != nil {
 		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error modifying spawn host: %s", err))
 	}
-	if editSpawnHostInput.ServicePassword != nil {
-		_, err = cloud.SetHostRDPPassword(ctx, evergreen.GetEnvironment(), h, *editSpawnHostInput.ServicePassword)
+	if spawnHost.ServicePassword != nil {
+		_, err = cloud.SetHostRDPPassword(ctx, evergreen.GetEnvironment(), h, *spawnHost.ServicePassword)
 		if err != nil {
 			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error setting spawn host password: %s", err))
 		}
@@ -138,7 +138,7 @@ func (r *mutationResolver) EditSpawnHost(ctx context.Context, editSpawnHostInput
 	return &apiHost, nil
 }
 
-func (r *queryResolver) MyHosts(ctx context.Context) ([]*restModel.APIHost, error) {
+func (r *mutationResolver) MyHosts(ctx context.Context) ([]*restModel.APIHost, error) {
 	usr := util.MustHaveUser(ctx)
 	hosts, err := host.Find(host.ByUserWithRunningStatus(usr.Username()))
 	if err != nil {
@@ -166,7 +166,7 @@ func (r *queryResolver) MyHosts(ctx context.Context) ([]*restModel.APIHost, erro
 	return apiHosts, nil
 }
 
-func (r *queryResolver) MyVolumes(ctx context.Context) ([]*restModel.APIVolume, error) {
+func (r *mutationResolver) MyVolumes(ctx context.Context) ([]*restModel.APIVolume, error) {
 	usr := util.MustHaveUser(ctx)
 	volumes, err := host.FindSortedVolumesByUser(usr.Username())
 	if err != nil {
@@ -283,7 +283,7 @@ func (r *mutationResolver) SpawnVolume(ctx context.Context, spawnVolumeInput gql
 		var newExpiration time.Time
 		newExpiration, err = restModel.FromTimePtr(spawnVolumeInput.Expiration)
 		if err != nil {
-			return false, gqlError.InternalServerError.Send(ctx, errors.Wrapf(err, errorTemplate, vol.ID).Error())
+			return false, gqlError.InternalServerError.Send(ctx, werrors.Wrapf(err, errorTemplate, vol.ID).Error())
 		}
 		additionalOptions.Expiration = newExpiration
 	} else if spawnVolumeInput.NoExpiration != nil && *spawnVolumeInput.NoExpiration {
@@ -297,7 +297,7 @@ func (r *mutationResolver) SpawnVolume(ctx context.Context, spawnVolumeInput gql
 	if spawnVolumeInput.Host != nil {
 		statusCode, err := cloud.AttachVolume(ctx, vol.ID, *spawnVolumeInput.Host)
 		if err != nil {
-			return false, util.MapHTTPStatusToGqlError(ctx, statusCode, errors.Wrapf(err, errorTemplate, vol.ID))
+			return false, util.MapHTTPStatusToGqlError(ctx, statusCode, werrors.Wrapf(err, errorTemplate, vol.ID))
 		}
 	}
 	return true, nil
@@ -399,4 +399,46 @@ func (r *mutationResolver) UpdateVolume(ctx context.Context, updateVolumeInput g
 	}
 
 	return true, nil
+}
+
+// !!! WARNING !!!
+// The code below was going to be deleted when updating resolvers. It has been copied here so you have
+// one last chance to move it out of harms way if you want. There are two reasons this happens:
+//  - When renaming or deleting a resolver the old code will be put in here. You can safely delete
+//    it when you're done.
+//  - You have helper methods in this file. Move them out to keep these resolver files clean.
+func (r *queryResolver) MyHosts(ctx context.Context) ([]*restModel.APIHost, error) {
+	usr := util.MustHaveUser(ctx)
+	hosts, err := host.Find(host.ByUserWithRunningStatus(usr.Username()))
+	if err != nil {
+		return nil, gqlError.InternalServerError.Send(ctx,
+			fmt.Sprintf("Error finding running hosts for user %s : %s", usr.Username(), err))
+	}
+	duration := time.Duration(5) * time.Minute
+	timestamp := time.Now().Add(-duration) // within last 5 minutes
+	recentlyTerminatedHosts, err := host.Find(host.ByUserRecentlyTerminated(usr.Username(), timestamp))
+	if err != nil {
+		return nil, gqlError.InternalServerError.Send(ctx,
+			fmt.Sprintf("Error finding recently terminated hosts for user %s : %s", usr.Username(), err))
+	}
+	hosts = append(hosts, recentlyTerminatedHosts...)
+
+	var apiHosts []*restModel.APIHost
+	for _, host := range hosts {
+		apiHost := restModel.APIHost{}
+		err = apiHost.BuildFromService(host)
+		if err != nil {
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error building APIHost from service: %s", err.Error()))
+		}
+		apiHosts = append(apiHosts, &apiHost)
+	}
+	return apiHosts, nil
+}
+func (r *queryResolver) MyVolumes(ctx context.Context) ([]*restModel.APIVolume, error) {
+	usr := util.MustHaveUser(ctx)
+	volumes, err := host.FindSortedVolumesByUser(usr.Username())
+	if err != nil {
+		return nil, gqlError.InternalServerError.Send(ctx, err.Error())
+	}
+	return util.GetAPIVolumeList(volumes)
 }

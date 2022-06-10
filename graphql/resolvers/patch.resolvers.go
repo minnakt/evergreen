@@ -28,7 +28,7 @@ import (
 	"github.com/evergreen-ci/gimlet"
 	"github.com/evergreen-ci/utility"
 	adb "github.com/mongodb/anser/db"
-	"github.com/pkg/errors"
+	werrors "github.com/pkg/errors"
 )
 
 func (r *mutationResolver) EnqueuePatch(ctx context.Context, patchID string, commitMessage *string) (*restModel.APIPatch, error) {
@@ -73,7 +73,7 @@ func (r *mutationResolver) SchedulePatch(ctx context.Context, patchID string, co
 	}
 	statusCode, err := units.SchedulePatch(ctx, patchID, version, patchUpdateReq)
 	if err != nil {
-		return nil, util.MapHTTPStatusToGqlError(ctx, statusCode, errors.Errorf("Error scheduling patch `%s`: %s", patchID, err.Error()))
+		return nil, util.MapHTTPStatusToGqlError(ctx, statusCode, werrors.Errorf("Error scheduling patch `%s`: %s", patchID, err.Error()))
 	}
 	scheduledPatch, err := data.FindPatchById(patchID)
 	if err != nil {
@@ -95,7 +95,6 @@ func (r *mutationResolver) SchedulePatchTasks(ctx context.Context, patchID strin
 	return &patchID, nil
 }
 
-// ScheduleUndispatchedBaseTasks only allows scheduling undispatched base tasks for tasks that are failing on the current patch
 func (r *mutationResolver) ScheduleUndispatchedBaseTasks(ctx context.Context, patchID string) ([]*restModel.APITask, error) {
 	opts := task.GetTasksByVersionOptions{
 		Statuses:                       evergreen.TaskFailureStatuses,
@@ -296,7 +295,7 @@ func (r *patchResolver) PatchTriggerAliases(ctx context.Context, obj *restModel.
 		if !projectCached {
 			_, project, err = model.FindLatestVersionWithValidProject(alias.ChildProject)
 			if err != nil {
-				return nil, gqlError.InternalServerError.Send(ctx, errors.Wrapf(err, "Problem getting last known project for '%s'", alias.ChildProject).Error())
+				return nil, gqlError.InternalServerError.Send(ctx, werrors.Wrapf(err, "Problem getting last known project for '%s'", alias.ChildProject).Error())
 			}
 			projectCache[alias.ChildProject] = project
 		}
@@ -427,7 +426,6 @@ func (r *projectResolver) Patches(ctx context.Context, obj *restModel.APIProject
 		apiPatches = append(apiPatches, &apiPatch)
 	}
 	return &gqlModel.Patches{Patches: apiPatches, FilteredPatchCount: count}, nil
-
 }
 
 func (r *queryResolver) Patch(ctx context.Context, id string) (*restModel.APIPatch, error) {
@@ -580,10 +578,9 @@ func (r *userResolver) Patches(ctx context.Context, obj *restModel.APIDBUser, pa
 		apiPatches = append(apiPatches, &apiPatch)
 	}
 	return &gqlModel.Patches{Patches: apiPatches, FilteredPatchCount: count}, nil
-
 }
 
-// Patch returns gql.PatchResolver implementation.
+// Patch returns generated.PatchResolver implementation.
 func (r *Resolver) Patch() generated.PatchResolver { return &patchResolver{r} }
 
 type patchResolver struct{ *Resolver }

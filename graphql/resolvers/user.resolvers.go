@@ -210,10 +210,10 @@ func (r *userResolver) Permissions(ctx context.Context, obj *restModel.APIDBUser
 	return &gqlModel.Permissions{UserID: utility.FromStringPtr(obj.UserID)}, nil
 }
 
-// Permissions returns gql.PermissionsResolver implementation.
+// Permissions returns generated.PermissionsResolver implementation.
 func (r *Resolver) Permissions() generated.PermissionsResolver { return &permissionsResolver{r} }
 
-// User returns gql.UserResolver implementation.
+// User returns generated.UserResolver implementation.
 func (r *Resolver) User() generated.UserResolver { return &userResolver{r} }
 
 type permissionsResolver struct{ *Resolver }

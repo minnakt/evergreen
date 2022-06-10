@@ -36,8 +36,6 @@ func (r *issueLinkResolver) JiraTicket(ctx context.Context, obj *restModel.APIIs
 	return restModel.GetJiraTicketFromURL(*obj.URL)
 }
 
-// AddAnnotationIssue adds to the annotation for that taskID/execution.
-// If isIssue is set, it adds to Issues, otherwise it adds to Suspected Issues.
 func (r *mutationResolver) AddAnnotationIssue(ctx context.Context, taskID string, execution int, apiIssue restModel.APIIssueLink, isIssue bool) (bool, error) {
 	usr := util.MustHaveUser(ctx)
 	issue := restModel.APIIssueLinkToService(apiIssue)
@@ -57,7 +55,6 @@ func (r *mutationResolver) AddAnnotationIssue(ctx context.Context, taskID string
 	}
 }
 
-// EditAnnotationNote updates the note for the annotation, assuming it hasn't been updated in the meantime.
 func (r *mutationResolver) EditAnnotationNote(ctx context.Context, taskID string, execution int, originalMessage string, newMessage string) (bool, error) {
 	usr := util.MustHaveUser(ctx)
 	if err := annotations.UpdateAnnotationNote(taskID, execution, originalMessage, newMessage, usr.Username()); err != nil {
@@ -66,8 +63,6 @@ func (r *mutationResolver) EditAnnotationNote(ctx context.Context, taskID string
 	return true, nil
 }
 
-// MoveAnnotationIssue moves an issue for the annotation. If isIssue is set, it removes the issue from Issues and adds it
-// to Suspected Issues, otherwise vice versa.
 func (r *mutationResolver) MoveAnnotationIssue(ctx context.Context, taskID string, execution int, apiIssue restModel.APIIssueLink, isIssue bool) (bool, error) {
 	usr := util.MustHaveUser(ctx)
 	issue := restModel.APIIssueLinkToService(apiIssue)
@@ -84,8 +79,6 @@ func (r *mutationResolver) MoveAnnotationIssue(ctx context.Context, taskID strin
 	}
 }
 
-// RemoveAnnotationIssue adds to the annotation for that taskID/execution.
-// If isIssue is set, it adds to Issues, otherwise it adds to Suspected Issues.
 func (r *mutationResolver) RemoveAnnotationIssue(ctx context.Context, taskID string, execution int, apiIssue restModel.APIIssueLink, isIssue bool) (bool, error) {
 	issue := restModel.APIIssueLinkToService(apiIssue)
 	if isIssue {
@@ -149,13 +142,13 @@ func (r *ticketFieldsResolver) ResolutionName(ctx context.Context, obj *thirdpar
 	return &obj.Resolution.Name, nil
 }
 
-// Annotation returns AnnotationResolver implementation.
+// Annotation returns generated.AnnotationResolver implementation.
 func (r *Resolver) Annotation() generated.AnnotationResolver { return &annotationResolver{r} }
 
-// IssueLink returns IssueLinkResolver implementation.
+// IssueLink returns generated.IssueLinkResolver implementation.
 func (r *Resolver) IssueLink() generated.IssueLinkResolver { return &issueLinkResolver{r} }
 
-// TicketFields returns graphql1.TicketFieldsResolver implementation.
+// TicketFields returns generated.TicketFieldsResolver implementation.
 func (r *Resolver) TicketFields() generated.TicketFieldsResolver { return &ticketFieldsResolver{r} }
 
 type annotationResolver struct{ *Resolver }

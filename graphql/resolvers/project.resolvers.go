@@ -24,7 +24,7 @@ import (
 	"github.com/evergreen-ci/gimlet"
 	"github.com/evergreen-ci/utility"
 	"github.com/mitchellh/mapstructure"
-	"github.com/pkg/errors"
+	werrors "github.com/pkg/errors"
 )
 
 func (r *mutationResolver) AddFavoriteProject(ctx context.Context, identifier string) (*restModel.APIProjectRef, error) {
@@ -46,14 +46,14 @@ func (r *mutationResolver) AddFavoriteProject(ctx context.Context, identifier st
 	return &apiProjectRef, nil
 }
 
-func (r *mutationResolver) AttachProjectToNewRepo(ctx context.Context, obj gqlModel.MoveProjectInput) (*restModel.APIProjectRef, error) {
+func (r *mutationResolver) AttachProjectToNewRepo(ctx context.Context, project gqlModel.MoveProjectInput) (*restModel.APIProjectRef, error) {
 	usr := util.MustHaveUser(ctx)
-	pRef, err := data.FindProjectById(obj.ProjectID, false, false)
+	pRef, err := data.FindProjectById(project.ProjectID, false, false)
 	if err != nil || pRef == nil {
-		return nil, gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("Could not find project: %s : %s", obj.ProjectID, err.Error()))
+		return nil, gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("Could not find project: %s : %s", project.ProjectID, err.Error()))
 	}
-	pRef.Owner = obj.NewOwner
-	pRef.Repo = obj.NewRepo
+	pRef.Owner = project.NewOwner
+	pRef.Repo = project.NewRepo
 
 	if err = pRef.AttachToNewRepo(usr); err != nil {
 		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error updating owner/repo: %s", err.Error()))
@@ -93,7 +93,7 @@ func (r *mutationResolver) CreateProject(ctx context.Context, project restModel.
 	}
 	dbProjectRef, ok := i.(*model.ProjectRef)
 	if !ok {
-		return nil, gqlError.InternalServerError.Send(ctx, errors.Wrapf(err, "Unexpected type %T for model.ProjectRef", i).Error())
+		return nil, gqlError.InternalServerError.Send(ctx, werrors.Wrapf(err, "Unexpected type %T for model.ProjectRef", i).Error())
 	}
 
 	u := gimlet.GetUser(ctx).(*user.DBUser)
@@ -124,8 +124,8 @@ func (r *mutationResolver) CreateProject(ctx context.Context, project restModel.
 	return &apiProjectRef, nil
 }
 
-func (r *mutationResolver) CopyProject(ctx context.Context, opts data.CopyProjectOpts) (*restModel.APIProjectRef, error) {
-	projectRef, err := data.CopyProject(ctx, opts)
+func (r *mutationResolver) CopyProject(ctx context.Context, project data.CopyProjectOpts) (*restModel.APIProjectRef, error) {
+	projectRef, err := data.CopyProject(ctx, project)
 	if projectRef == nil && err != nil {
 		apiErr, ok := err.(gimlet.ErrorResponse) // make sure bad request errors are handled correctly; all else should be treated as internal server error
 		if ok {
@@ -202,20 +202,20 @@ func (r *mutationResolver) RemoveFavoriteProject(ctx context.Context, identifier
 	return &apiProjectRef, nil
 }
 
-func (r *mutationResolver) SaveProjectSettingsForSection(ctx context.Context, obj *restModel.APIProjectSettings, section gqlModel.ProjectSettingsSection) (*restModel.APIProjectSettings, error) {
-	projectId := utility.FromStringPtr(obj.ProjectRef.Id)
+func (r *mutationResolver) SaveProjectSettingsForSection(ctx context.Context, projectSettings *restModel.APIProjectSettings, section gqlModel.ProjectSettingsSection) (*restModel.APIProjectSettings, error) {
+	projectId := utility.FromStringPtr(projectSettings.ProjectRef.Id)
 	usr := util.MustHaveUser(ctx)
-	changes, err := data.SaveProjectSettingsForSection(ctx, projectId, obj, model.ProjectPageSection(section), false, usr.Username())
+	changes, err := data.SaveProjectSettingsForSection(ctx, projectId, projectSettings, model.ProjectPageSection(section), false, usr.Username())
 	if err != nil {
 		return nil, gqlError.InternalServerError.Send(ctx, err.Error())
 	}
 	return changes, nil
 }
 
-func (r *mutationResolver) SaveRepoSettingsForSection(ctx context.Context, obj *restModel.APIProjectSettings, section gqlModel.ProjectSettingsSection) (*restModel.APIProjectSettings, error) {
-	projectId := utility.FromStringPtr(obj.ProjectRef.Id)
+func (r *mutationResolver) SaveRepoSettingsForSection(ctx context.Context, repoSettings *restModel.APIProjectSettings, section gqlModel.ProjectSettingsSection) (*restModel.APIProjectSettings, error) {
+	projectId := utility.FromStringPtr(repoSettings.ProjectRef.Id)
 	usr := util.MustHaveUser(ctx)
-	changes, err := data.SaveProjectSettingsForSection(ctx, projectId, obj, model.ProjectPageSection(section), true, usr.Username())
+	changes, err := data.SaveProjectSettingsForSection(ctx, projectId, repoSettings, model.ProjectPageSection(section), true, usr.Username())
 	if err != nil {
 		return nil, gqlError.InternalServerError.Send(ctx, err.Error())
 	}
@@ -302,7 +302,7 @@ func (r *projectSubscriberResolver) Subscriber(ctx context.Context, obj *restMod
 	case event.EnqueuePatchSubscriberType:
 		// We don't store information in target for this case, so do nothing.
 	default:
-		return nil, errors.Errorf("unknown subscriber type: '%s'", subscriberType)
+		return nil, werrors.Errorf("unknown subscriber type: '%s'", subscriberType)
 	}
 
 	return res, nil
@@ -488,26 +488,26 @@ func (r *repoSettingsResolver) Vars(ctx context.Context, obj *restModel.APIProje
 	return util.GetRedactedAPIVarsForProject(ctx, utility.FromStringPtr(obj.ProjectRef.Id))
 }
 
-// Project returns gql.ProjectResolver implementation.
+// Project returns generated.ProjectResolver implementation.
 func (r *Resolver) Project() generated.ProjectResolver { return &projectResolver{r} }
 
-// ProjectSettings returns gql.ProjectSettingsResolver implementation.
+// ProjectSettings returns generated.ProjectSettingsResolver implementation.
 func (r *Resolver) ProjectSettings() generated.ProjectSettingsResolver {
 	return &projectSettingsResolver{r}
 }
 
-// ProjectSubscriber returns gql.ProjectSubscriberResolver implementation.
+// ProjectSubscriber returns generated.ProjectSubscriberResolver implementation.
 func (r *Resolver) ProjectSubscriber() generated.ProjectSubscriberResolver {
 	return &projectSubscriberResolver{r}
 }
 
-// ProjectVars returns gql.ProjectVarsResolver implementation.
+// ProjectVars returns generated.ProjectVarsResolver implementation.
 func (r *Resolver) ProjectVars() generated.ProjectVarsResolver { return &projectVarsResolver{r} }
 
-// RepoRef returns gql.RepoRefResolver implementation.
+// RepoRef returns generated.RepoRefResolver implementation.
 func (r *Resolver) RepoRef() generated.RepoRefResolver { return &repoRefResolver{r} }
 
-// RepoSettings returns gql.RepoSettingsResolver implementation.
+// RepoSettings returns generated.RepoSettingsResolver implementation.
 func (r *Resolver) RepoSettings() generated.RepoSettingsResolver { return &repoSettingsResolver{r} }
 
 type projectResolver struct{ *Resolver }

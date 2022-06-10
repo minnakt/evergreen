@@ -23,7 +23,7 @@ import (
 	"github.com/evergreen-ci/utility"
 	"github.com/mongodb/grip"
 	"github.com/mongodb/grip/message"
-	"github.com/pkg/errors"
+	werrors "github.com/pkg/errors"
 )
 
 func (r *hostResolver) DistroID(ctx context.Context, obj *restModel.APIHost) (*string, error) {
@@ -77,7 +77,7 @@ func (r *hostResolver) Volumes(ctx context.Context, obj *restModel.APIHost) ([]*
 		apiVolume := &restModel.APIVolume{}
 		err = apiVolume.BuildFromService(volume)
 		if err != nil {
-			return nil, gqlError.InternalServerError.Send(ctx, errors.Wrapf(err, "error building volume '%s' from service", volId).Error())
+			return nil, gqlError.InternalServerError.Send(ctx, werrors.Wrapf(err, "error building volume '%s' from service", volId).Error())
 		}
 		volumes = append(volumes, apiVolume)
 	}
@@ -95,7 +95,7 @@ func (r *mutationResolver) ReprovisionToNew(ctx context.Context, hostIds []strin
 
 	hostsUpdated, httpStatus, err := api.ModifyHostsWithPermissions(hosts, permissions, api.GetReprovisionToNewCallback(ctx, evergreen.GetEnvironment(), user.Username()))
 	if err != nil {
-		return 0, util.MapHTTPStatusToGqlError(ctx, httpStatus, errors.Errorf("Error marking selected hosts as needing to reprovision: %s", err.Error()))
+		return 0, util.MapHTTPStatusToGqlError(ctx, httpStatus, werrors.Errorf("Error marking selected hosts as needing to reprovision: %s", err.Error()))
 	}
 
 	return hostsUpdated, nil
@@ -111,7 +111,7 @@ func (r *mutationResolver) RestartJasper(ctx context.Context, hostIds []string) 
 
 	hostsUpdated, httpStatus, err := api.ModifyHostsWithPermissions(hosts, permissions, api.GetRestartJasperCallback(ctx, evergreen.GetEnvironment(), user.Username()))
 	if err != nil {
-		return 0, util.MapHTTPStatusToGqlError(ctx, httpStatus, errors.Errorf("Error marking selected hosts as needing Jasper service restarted: %s", err.Error()))
+		return 0, util.MapHTTPStatusToGqlError(ctx, httpStatus, werrors.Errorf("Error marking selected hosts as needing Jasper service restarted: %s", err.Error()))
 	}
 
 	return hostsUpdated, nil
@@ -191,7 +191,7 @@ func (r *queryResolver) Host(ctx context.Context, hostID string) (*restModel.API
 		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error Fetching host: %s", err.Error()))
 	}
 	if host == nil {
-		return nil, errors.Errorf("unable to find host %s", hostID)
+		return nil, werrors.Errorf("unable to find host %s", hostID)
 	}
 
 	apiHost := &restModel.APIHost{}
@@ -380,13 +380,13 @@ func (r *volumeResolver) Host(ctx context.Context, obj *restModel.APIVolume) (*r
 	return &apiHost, nil
 }
 
-// Host returns gql.HostResolver implementation.
+// Host returns generated.HostResolver implementation.
 func (r *Resolver) Host() generated.HostResolver { return &hostResolver{r} }
 
-// TaskQueueItem returns gql.TaskQueueItemResolver implementation.
+// TaskQueueItem returns generated.TaskQueueItemResolver implementation.
 func (r *Resolver) TaskQueueItem() generated.TaskQueueItemResolver { return &taskQueueItemResolver{r} }
 
-// Volume returns gql.VolumeResolver implementation.
+// Volume returns generated.VolumeResolver implementation.
 func (r *Resolver) Volume() generated.VolumeResolver { return &volumeResolver{r} }
 
 type hostResolver struct{ *Resolver }

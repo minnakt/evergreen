@@ -26,7 +26,7 @@ import (
 	"github.com/evergreen-ci/utility"
 	"github.com/mongodb/grip"
 	"github.com/mongodb/grip/message"
-	"github.com/pkg/errors"
+	werrors "github.com/pkg/errors"
 )
 
 func (r *mutationResolver) RemoveItemFromCommitQueue(ctx context.Context, commitQueueID string, issue string) (*string, error) {
@@ -99,7 +99,7 @@ func (r *queryResolver) BuildVariantsForTaskName(ctx context.Context, projectID 
 func (r *queryResolver) CommitQueue(ctx context.Context, id string) (*restModel.APICommitQueue, error) {
 	commitQueue, err := data.FindCommitQueueForProject(id)
 	if err != nil {
-		if errors.Cause(err) == err {
+		if werrors.Cause(err) == err {
 			return nil, gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("error finding commit queue for %s: %s", id, err.Error()))
 		}
 		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("error finding commit queue for %s: %s", id, err.Error()))
@@ -369,7 +369,6 @@ func (r *versionResolver) BaseVersion(ctx context.Context, obj *restModel.APIVer
 	return &apiVersion, nil
 }
 
-// Returns grouped build variants for a version. Will not return build variants for unactivated versions
 func (r *versionResolver) BuildVariants(ctx context.Context, obj *restModel.APIVersion, options *gqlModel.BuildVariantOptions) ([]*gqlModel.GroupedBuildVariant, error) {
 	// If activated is nil in the db we should resolve it and cache it for subsequent queries. There is a very low likely hood of this field being hit
 	if obj.Activated == nil {
@@ -412,7 +411,7 @@ func (r *versionResolver) ChildVersions(ctx context.Context, obj *restModel.APIV
 		return nil, nil
 	}
 	if err := data.ValidatePatchID(*obj.Id); err != nil {
-		return nil, errors.WithStack(err)
+		return nil, werrors.WithStack(err)
 	}
 	foundPatch, err := patch.FindOneId(*obj.Id)
 	if err != nil {
@@ -548,7 +547,6 @@ func (r *versionResolver) TaskCount(ctx context.Context, obj *restModel.APIVersi
 	return &taskCount, nil
 }
 
-// Returns task status counts (a mapping between status and the number of tasks with that status) for a version.
 func (r *versionResolver) TaskStatusCounts(ctx context.Context, obj *restModel.APIVersion, options *gqlModel.BuildVariantOptions) ([]*task.StatusCount, error) {
 	opts := task.GetTasksByVersionOptions{
 		IncludeBaseTasks:      false,
@@ -715,7 +713,7 @@ func (r *versionResolver) VersionTiming(ctx context.Context, obj *restModel.APIV
 	}, nil
 }
 
-// Version returns gql.VersionResolver implementation.
+// Version returns generated.VersionResolver implementation.
 func (r *Resolver) Version() generated.VersionResolver { return &versionResolver{r} }
 
 type versionResolver struct{ *Resolver }

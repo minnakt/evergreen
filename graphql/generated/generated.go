@@ -421,6 +421,8 @@ type ComplexityRoot struct {
 		EnqueuePatch                  func(childComplexity int, patchID string, commitMessage *string) int
 		ForceRepotrackerRun           func(childComplexity int, projectID string) int
 		MoveAnnotationIssue           func(childComplexity int, taskID string, execution int, apiIssue model1.APIIssueLink, isIssue bool) int
+		MyHosts                       func(childComplexity int) int
+		MyVolumes                     func(childComplexity int) int
 		OverrideTaskDependencies      func(childComplexity int, taskID string) int
 		RemoveAnnotationIssue         func(childComplexity int, taskID string, execution int, apiIssue model1.APIIssueLink, isIssue bool) int
 		RemoveFavoriteProject         func(childComplexity int, identifier string) int
@@ -1238,6 +1240,8 @@ type MutationResolver interface {
 	AttachVolumeToHost(ctx context.Context, volumeAndHost model.VolumeHost) (bool, error)
 	DetachVolumeFromHost(ctx context.Context, volumeID string) (bool, error)
 	EditSpawnHost(ctx context.Context, spawnHost *model.EditSpawnHostInput) (*model1.APIHost, error)
+	MyHosts(ctx context.Context) ([]*model1.APIHost, error)
+	MyVolumes(ctx context.Context) ([]*model1.APIVolume, error)
 	SpawnHost(ctx context.Context, spawnHostInput *model.SpawnHostInput) (*model1.APIHost, error)
 	SpawnVolume(ctx context.Context, spawnVolumeInput model.SpawnVolumeInput) (bool, error)
 	RemoveVolume(ctx context.Context, volumeID string) (bool, error)
@@ -3044,6 +3048,20 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Mutation.MoveAnnotationIssue(childComplexity, args["taskId"].(string), args["execution"].(int), args["apiIssue"].(model1.APIIssueLink), args["isIssue"].(bool)), true
+
+	case "Mutation.myHosts":
+		if e.complexity.Mutation.MyHosts == nil {
+			break
+		}
+
+		return e.complexity.Mutation.MyHosts(childComplexity), true
+
+	case "Mutation.myVolumes":
+		if e.complexity.Mutation.MyVolumes == nil {
+			break
+		}
+
+		return e.complexity.Mutation.MyVolumes(childComplexity), true
 
 	case "Mutation.overrideTaskDependencies":
 		if e.complexity.Mutation.OverrideTaskDependencies == nil {
@@ -8575,6 +8593,8 @@ extend type Mutation {
   attachVolumeToHost(volumeAndHost: VolumeHost!): Boolean!
   detachVolumeFromHost(volumeId: String!): Boolean!
   editSpawnHost(spawnHost: EditSpawnHostInput): Host!
+  myHosts: [Host!]!
+  myVolumes: [Volume!]!
   spawnHost(spawnHostInput: SpawnHostInput): Host!
   spawnVolume(spawnVolumeInput: SpawnVolumeInput!): Boolean!
   removeVolume(volumeId: String!): Boolean!
@@ -19005,6 +19025,76 @@ func (ec *executionContext) _Mutation_editSpawnHost(ctx context.Context, field g
 	res := resTmp.(*model1.APIHost)
 	fc.Result = res
 	return ec.marshalNHost2ᚖgithubᚗcomᚋevergreenᚑciᚋevergreenᚋrestᚋmodelᚐAPIHost(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Mutation_myHosts(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   true,
+		IsResolver: true,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().MyHosts(rctx)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model1.APIHost)
+	fc.Result = res
+	return ec.marshalNHost2ᚕᚖgithubᚗcomᚋevergreenᚑciᚋevergreenᚋrestᚋmodelᚐAPIHostᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Mutation_myVolumes(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   true,
+		IsResolver: true,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().MyVolumes(rctx)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model1.APIVolume)
+	fc.Result = res
+	return ec.marshalNVolume2ᚕᚖgithubᚗcomᚋevergreenᚑciᚋevergreenᚋrestᚋmodelᚐAPIVolumeᚄ(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Mutation_spawnHost(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -43754,6 +43844,16 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			}
 		case "editSpawnHost":
 			out.Values[i] = ec._Mutation_editSpawnHost(ctx, field)
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		case "myHosts":
+			out.Values[i] = ec._Mutation_myHosts(ctx, field)
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		case "myVolumes":
+			out.Values[i] = ec._Mutation_myVolumes(ctx, field)
 			if out.Values[i] == graphql.Null {
 				invalids++
 			}
