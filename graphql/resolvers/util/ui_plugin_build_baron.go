@@ -1,4 +1,4 @@
-package graphql
+package util
 
 import (
 	"github.com/evergreen-ci/evergreen"

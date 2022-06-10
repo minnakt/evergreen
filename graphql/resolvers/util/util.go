@@ -1,10 +1,9 @@
-package graphql
+package util
 
 import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"github.com/evergreen-ci/evergreen/apimodels"
 	"github.com/evergreen-ci/evergreen/cloud"
 	"github.com/evergreen-ci/evergreen/db"
+	gqlError "github.com/evergreen-ci/evergreen/graphql/errors"
 	gqlModel "github.com/evergreen-ci/evergreen/graphql/model"
 	"github.com/evergreen-ci/evergreen/model"
 	"github.com/evergreen-ci/evergreen/model/artifact"
@@ -40,7 +40,7 @@ import (
 func GetGroupedFiles(ctx context.Context, name string, taskID string, execution int) (*gqlModel.GroupedFiles, error) {
 	taskFiles, err := artifact.GetAllArtifacts([]artifact.TaskIDAndExecution{{TaskID: taskID, Execution: execution}})
 	if err != nil {
-		return nil, ResourceNotFound.Send(ctx, err.Error())
+		return nil, gqlError.ResourceNotFound.Send(ctx, err.Error())
 	}
 	hasUser := gimlet.GetUser(ctx) != nil
 	strippedFiles, err := artifact.StripHiddenFiles(taskFiles, hasUser)
@@ -53,7 +53,7 @@ func GetGroupedFiles(ctx context.Context, name string, taskID string, execution 
 		apiFile := restModel.APIFile{}
 		err := apiFile.BuildFromService(file)
 		if err != nil {
-			return nil, InternalServerError.Send(ctx, "error stripping hidden files")
+			return nil, gqlError.InternalServerError.Send(ctx, "error stripping hidden files")
 		}
 		apiFileList = append(apiFileList, &apiFile)
 	}
@@ -63,10 +63,10 @@ func GetGroupedFiles(ctx context.Context, name string, taskID string, execution 
 func findAllTasksByIds(ctx context.Context, taskIDs ...string) ([]task.Task, error) {
 	tasks, err := task.FindAll(db.Query(task.ByIds(taskIDs)))
 	if err != nil {
-		return nil, ResourceNotFound.Send(ctx, err.Error())
+		return nil, gqlError.ResourceNotFound.Send(ctx, err.Error())
 	}
 	if len(tasks) == 0 {
-		return nil, ResourceNotFound.Send(ctx, errors.New("tasks not found").Error())
+		return nil, gqlError.ResourceNotFound.Send(ctx, errors.New("tasks not found").Error())
 	}
 	if len(tasks) != len(taskIDs) {
 		foundTaskIds := []string{}
@@ -91,11 +91,11 @@ func SetManyTasksScheduled(ctx context.Context, url string, isActive bool, taskI
 	}
 	for _, t := range tasks {
 		if t.Requester == evergreen.MergeTestRequester && isActive {
-			return nil, InputValidationError.Send(ctx, "commit queue tasks cannot be manually scheduled")
+			return nil, gqlError.InputValidationError.Send(ctx, "commit queue tasks cannot be manually scheduled")
 		}
 	}
 	if err = model.SetActiveState(usr.Username(), isActive, tasks...); err != nil {
-		return nil, InternalServerError.Send(ctx, err.Error())
+		return nil, gqlError.InternalServerError.Send(ctx, err.Error())
 	}
 
 	// Get the modified tasks back out of the db
@@ -110,7 +110,7 @@ func SetManyTasksScheduled(ctx context.Context, url string, isActive bool, taskI
 			LogURL: url,
 		})
 		if err != nil {
-			return nil, InternalServerError.Send(ctx, err.Error())
+			return nil, gqlError.InternalServerError.Send(ctx, err.Error())
 		}
 
 		apiTasks = append(apiTasks, &apiTask)
@@ -193,7 +193,7 @@ func HasEnqueuePatchPermission(u *user.DBUser, existingPatch *restModel.APIPatch
 func GetPatchProjectVariantsAndTasksForUI(ctx context.Context, apiPatch *restModel.APIPatch) (*gqlModel.PatchProject, error) {
 	patchProjectVariantsAndTasks, err := model.GetVariantsAndTasksFromProject(ctx, *apiPatch.PatchedParserProject, *apiPatch.ProjectId)
 	if err != nil {
-		return nil, InternalServerError.Send(ctx, fmt.Sprintf("Error getting project variants and tasks for patch %s: %s", *apiPatch.Id, err.Error()))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error getting project variants and tasks for patch %s: %s", *apiPatch.Id, err.Error()))
 	}
 
 	// convert variants to UI data structure
@@ -256,7 +256,7 @@ func GetAPITaskFromTask(ctx context.Context, url string, task task.Task) (*restM
 		LogURL: url,
 	})
 	if err != nil {
-		return nil, InternalServerError.Send(ctx, fmt.Sprintf("error building apiTask from task %s: %s", task.Id, err.Error()))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("error building apiTask from task %s: %s", task.Id, err.Error()))
 	}
 	return &apiTask, nil
 }
@@ -367,10 +367,10 @@ func GetCedarFailedTestResultsSample(ctx context.Context, tasks []task.Task, tes
 func ModifyVersionHandler(ctx context.Context, patchID string, modification model.VersionModification) error {
 	v, err := model.VersionFindOneId(patchID)
 	if err != nil {
-		return ResourceNotFound.Send(ctx, fmt.Sprintf("error finding version %s: %s", patchID, err.Error()))
+		return gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("error finding version %s: %s", patchID, err.Error()))
 	}
 	if v == nil {
-		return ResourceNotFound.Send(ctx, fmt.Sprintf("Unable to find version with id: `%s`", patchID))
+		return gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("Unable to find version with id: `%s`", patchID))
 	}
 	user := MustHaveUser(ctx)
 	httpStatus, err := model.ModifyVersion(*v, *user, modification)
@@ -385,15 +385,15 @@ func ModifyVersionHandler(ctx context.Context, patchID string, modification mode
 			//do the same for child patches
 			p, err := patch.FindOneId(patchID)
 			if err != nil {
-				return ResourceNotFound.Send(ctx, fmt.Sprintf("error finding patch %s: %s", patchID, err.Error()))
+				return gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("error finding patch %s: %s", patchID, err.Error()))
 			}
 			if p == nil {
-				return ResourceNotFound.Send(ctx, fmt.Sprintf("patch '%s' not found ", patchID))
+				return gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("patch '%s' not found ", patchID))
 			}
 			if p.IsParent() {
 				childPatches, err := patch.Find(patch.ByStringIds(p.Triggers.ChildPatches))
 				if err != nil {
-					return InternalServerError.Send(ctx, fmt.Sprintf("error getting child patches: %s", err.Error()))
+					return gqlError.InternalServerError.Send(ctx, fmt.Sprintf("error getting child patches: %s", err.Error()))
 				}
 				for _, childPatch := range childPatches {
 					// only modify the child patch if it is finalized
@@ -416,15 +416,15 @@ func ModifyVersionHandler(ctx context.Context, patchID string, modification mode
 func MapHTTPStatusToGqlError(ctx context.Context, httpStatus int, err error) *gqlerror.Error {
 	switch httpStatus {
 	case http.StatusInternalServerError:
-		return InternalServerError.Send(ctx, err.Error())
+		return gqlError.InternalServerError.Send(ctx, err.Error())
 	case http.StatusNotFound:
-		return ResourceNotFound.Send(ctx, err.Error())
+		return gqlError.ResourceNotFound.Send(ctx, err.Error())
 	case http.StatusUnauthorized:
-		return Forbidden.Send(ctx, err.Error())
+		return gqlError.Forbidden.Send(ctx, err.Error())
 	case http.StatusBadRequest:
-		return InputValidationError.Send(ctx, err.Error())
+		return gqlError.InputValidationError.Send(ctx, err.Error())
 	default:
-		return InternalServerError.Send(ctx, err.Error())
+		return gqlError.InternalServerError.Send(ctx, err.Error())
 	}
 }
 
@@ -493,7 +493,7 @@ func GetResourceTypeAndIdFromSubscriptionSelectors(ctx context.Context, selector
 	var idType string
 	for _, s := range selectors {
 		if s.Type == nil {
-			return "", "", InputValidationError.Send(ctx, "Found nil for selector type. Selector type must be a string and not nil.")
+			return "", "", gqlError.InputValidationError.Send(ctx, "Found nil for selector type. Selector type must be a string and not nil.")
 		}
 		// Don't exit the loop for object and id because together they
 		// describe the resource id and resource type for the subscription
@@ -513,14 +513,14 @@ func GetResourceTypeAndIdFromSubscriptionSelectors(ctx context.Context, selector
 		}
 	}
 	if idType == "" || id == "" {
-		return "", "", InputValidationError.Send(ctx, "Selectors do not indicate a target version, build, project, or task ID")
+		return "", "", gqlError.InputValidationError.Send(ctx, "Selectors do not indicate a target version, build, project, or task ID")
 	}
 	return idType, id, nil
 }
 
 func SavePublicKey(ctx context.Context, publicKeyInput gqlModel.PublicKeyInput) error {
 	if DoesPublicKeyNameAlreadyExist(ctx, publicKeyInput.Name) {
-		return InputValidationError.Send(ctx, fmt.Sprintf("Provided key name, %s, already exists.", publicKeyInput.Name))
+		return gqlError.InputValidationError.Send(ctx, fmt.Sprintf("Provided key name, %s, already exists.", publicKeyInput.Name))
 	}
 	err := VerifyPublicKey(ctx, publicKeyInput)
 	if err != nil {
@@ -528,18 +528,18 @@ func SavePublicKey(ctx context.Context, publicKeyInput gqlModel.PublicKeyInput) 
 	}
 	err = MustHaveUser(ctx).AddPublicKey(publicKeyInput.Name, publicKeyInput.Key)
 	if err != nil {
-		return InternalServerError.Send(ctx, fmt.Sprintf("Error saving public key: %s", err.Error()))
+		return gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error saving public key: %s", err.Error()))
 	}
 	return nil
 }
 
 func VerifyPublicKey(ctx context.Context, publicKey gqlModel.PublicKeyInput) error {
 	if publicKey.Name == "" {
-		return InputValidationError.Send(ctx, "Provided public key name cannot be empty.")
+		return gqlError.InputValidationError.Send(ctx, "Provided public key name cannot be empty.")
 	}
 	_, _, _, _, err := ssh.ParseAuthorizedKey([]byte(publicKey.Key))
 	if err != nil {
-		return InputValidationError.Send(ctx, fmt.Sprintf("Provided public key is invalid : %s", err.Error()))
+		return gqlError.InputValidationError.Send(ctx, fmt.Sprintf("Provided public key is invalid : %s", err.Error()))
 	}
 	return nil
 }
@@ -580,22 +580,6 @@ func GetAPIVolumeList(volumes []host.Volume) ([]*restModel.APIVolume, error) {
 	return apiVolumes, nil
 }
 
-func SpawnHostForTestCode(ctx context.Context, vol *host.Volume, h *host.Host) error {
-	mgr, err := cloud.GetEC2ManagerForVolume(ctx, vol)
-	if err != nil {
-		return err
-	}
-	if os.Getenv("SETTINGS_OVERRIDE") != "" {
-		// The mock manager needs to spawn the host specified in our test data.
-		// The host should already be spawned in a non-test scenario.
-		_, err := mgr.SpawnHost(ctx, h)
-		if err != nil {
-			return errors.Wrapf(err, "error spawning host in test code")
-		}
-	}
-	return nil
-}
-
 func MustHaveUser(ctx context.Context) *user.DBUser {
 	u := gimlet.GetUser(ctx)
 	if u == nil {
@@ -617,7 +601,7 @@ func MustHaveUser(ctx context.Context) *user.DBUser {
 
 func ValidateVolumeExpirationInput(ctx context.Context, expirationTime *time.Time, noExpiration *bool) error {
 	if expirationTime != nil && noExpiration != nil && *noExpiration {
-		return InputValidationError.Send(ctx, "Cannot apply an expiration time AND set volume as non-expirable")
+		return gqlError.InputValidationError.Send(ctx, "Cannot apply an expiration time AND set volume as non-expirable")
 	}
 	return nil
 }
@@ -627,7 +611,7 @@ func ValidateVolumeName(ctx context.Context, name *string) error {
 		return nil
 	}
 	if *name == "" {
-		return InputValidationError.Send(ctx, "Name cannot be empty.")
+		return gqlError.InputValidationError.Send(ctx, "Name cannot be empty.")
 	}
 	usr := MustHaveUser(ctx)
 	myVolumes, err := host.FindSortedVolumesByUser(usr.Id)
@@ -636,7 +620,7 @@ func ValidateVolumeName(ctx context.Context, name *string) error {
 	}
 	for _, vol := range myVolumes {
 		if *name == vol.ID || *name == vol.DisplayName {
-			return InputValidationError.Send(ctx, "The provided volume name is already in use")
+			return gqlError.InputValidationError.Send(ctx, "The provided volume name is already in use")
 		}
 	}
 	return nil
@@ -651,7 +635,7 @@ func ApplyVolumeOptions(ctx context.Context, volume host.Volume, volumeOptions r
 		}
 		err = mgr.ModifyVolume(ctx, &volume, &volumeOptions)
 		if err != nil {
-			return InternalServerError.Send(ctx, fmt.Sprintf("Unable to apply expiration options to volume %s: %s", volume.ID, err.Error()))
+			return gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Unable to apply expiration options to volume %s: %s", volume.ID, err.Error()))
 		}
 	}
 	return nil
@@ -686,15 +670,15 @@ func IsPopulated(buildVariantOptions *gqlModel.BuildVariantOptions) bool {
 func GetRedactedAPIVarsForProject(ctx context.Context, projectId string) (*restModel.APIProjectVars, error) {
 	vars, err := model.FindOneProjectVars(projectId)
 	if err != nil {
-		return nil, InternalServerError.Send(ctx, fmt.Sprintf("error finding project vars for '%s': %s", projectId, err.Error()))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("error finding project vars for '%s': %s", projectId, err.Error()))
 	}
 	if vars == nil {
-		return nil, InternalServerError.Send(ctx, fmt.Sprintf("vars for '%s' don't exist", projectId))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("vars for '%s' don't exist", projectId))
 	}
 	vars = vars.RedactPrivateVars()
 	res := &restModel.APIProjectVars{}
 	if err = res.BuildFromService(vars); err != nil {
-		return nil, InternalServerError.Send(ctx, fmt.Sprintf("problem building APIProjectVars from service: %s", err.Error()))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("problem building APIProjectVars from service: %s", err.Error()))
 	}
 	return res, nil
 }
@@ -702,13 +686,13 @@ func GetRedactedAPIVarsForProject(ctx context.Context, projectId string) (*restM
 func GetAPIAliasesForProject(ctx context.Context, projectId string) ([]*restModel.APIProjectAlias, error) {
 	aliases, err := model.FindAliasesForProjectFromDb(projectId)
 	if err != nil {
-		return nil, InternalServerError.Send(ctx, fmt.Sprintf("error finding aliases for project: %s", err.Error()))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("error finding aliases for project: %s", err.Error()))
 	}
 	res := []*restModel.APIProjectAlias{}
 	for _, alias := range aliases {
 		apiAlias := restModel.APIProjectAlias{}
 		if err = apiAlias.BuildFromService(alias); err != nil {
-			return nil, InternalServerError.Send(ctx, fmt.Sprintf("problem building APIPProjectAlias %s from service: %s",
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("problem building APIPProjectAlias %s from service: %s",
 				alias.Alias, err.Error()))
 		}
 		res = append(res, &apiAlias)
@@ -719,14 +703,14 @@ func GetAPIAliasesForProject(ctx context.Context, projectId string) ([]*restMode
 func GetAPISubscriptionsForProject(ctx context.Context, projectId string) ([]*restModel.APISubscription, error) {
 	subscriptions, err := event.FindSubscriptionsByOwner(projectId, event.OwnerTypeProject)
 	if err != nil {
-		return nil, InternalServerError.Send(ctx, fmt.Sprintf("error finding subscription for project: %s", err.Error()))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("error finding subscription for project: %s", err.Error()))
 	}
 
 	res := []*restModel.APISubscription{}
 	for _, sub := range subscriptions {
 		apiSubscription := restModel.APISubscription{}
 		if err = apiSubscription.BuildFromService(sub); err != nil {
-			return nil, InternalServerError.Send(ctx, fmt.Sprintf("problem building APIPProjectSubscription %s from service: %s",
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("problem building APIPProjectSubscription %s from service: %s",
 				sub.ID, err.Error()))
 		}
 		res = append(res, &apiSubscription)
@@ -811,7 +795,7 @@ func GroupProjects(projects []model.ProjectRef, onlyDefaultedToRepo bool) ([]*gq
 func HasProjectPermission(ctx context.Context, resource string, next graphql.Resolver, permissionLevel int) (res interface{}, err error) {
 	user := gimlet.GetUser(ctx)
 	if user == nil {
-		return nil, Forbidden.Send(ctx, "user not logged in")
+		return nil, gqlError.Forbidden.Send(ctx, "user not logged in")
 	}
 	opts := gimlet.PermissionOpts{
 		Resource:      resource,
@@ -822,7 +806,7 @@ func HasProjectPermission(ctx context.Context, resource string, next graphql.Res
 	if user.HasPermission(opts) {
 		return next(ctx)
 	}
-	return nil, Forbidden.Send(ctx, fmt.Sprintf("user %s does not have permission to access settings for the project %s", user.Username(), resource))
+	return nil, gqlError.Forbidden.Send(ctx, fmt.Sprintf("user %s does not have permission to access settings for the project %s", user.Username(), resource))
 }
 
 // GetValidTaskStatusesFilter returns a slice of task statuses that are valid and are searchable.

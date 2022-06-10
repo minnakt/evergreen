@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/evergreen-ci/evergreen"
-	gql "github.com/evergreen-ci/evergreen/graphql"
+	gqlError "github.com/evergreen-ci/evergreen/graphql/errors"
 	restModel "github.com/evergreen-ci/evergreen/rest/model"
 )
 
@@ -21,7 +21,7 @@ func (r *queryResolver) ClientConfig(ctx context.Context) (*restModel.APIClientC
 	clientConfig := restModel.APIClientConfig{}
 	err := clientConfig.BuildFromService(*envClientConfig)
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error building APIClientConfig from service: %s", err.Error()))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error building APIClientConfig from service: %s", err.Error()))
 	}
 
 	return &clientConfig, nil
@@ -30,7 +30,7 @@ func (r *queryResolver) ClientConfig(ctx context.Context) (*restModel.APIClientC
 func (r *queryResolver) InstanceTypes(ctx context.Context) ([]string, error) {
 	config, err := evergreen.GetConfig()
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, "unable to retrieve server config")
+		return nil, gqlError.InternalServerError.Send(ctx, "unable to retrieve server config")
 	}
 	return config.Providers.AWS.AllowedInstanceTypes, nil
 }
@@ -38,13 +38,13 @@ func (r *queryResolver) InstanceTypes(ctx context.Context) ([]string, error) {
 func (r *queryResolver) SpruceConfig(ctx context.Context) (*restModel.APIAdminSettings, error) {
 	config, err := evergreen.GetConfig()
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error Fetching evergreen settings: %s", err.Error()))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error Fetching evergreen settings: %s", err.Error()))
 	}
 
 	spruceConfig := restModel.APIAdminSettings{}
 	err = spruceConfig.BuildFromService(config)
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error building api admin settings from service: %s", err.Error()))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error building api admin settings from service: %s", err.Error()))
 	}
 	return &spruceConfig, nil
 }

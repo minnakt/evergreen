@@ -8,8 +8,10 @@ import (
 	"fmt"
 
 	"github.com/evergreen-ci/evergreen"
-	gql "github.com/evergreen-ci/evergreen/graphql"
+	gqlError "github.com/evergreen-ci/evergreen/graphql/errors"
+	"github.com/evergreen-ci/evergreen/graphql/generated"
 	gqlModel "github.com/evergreen-ci/evergreen/graphql/model"
+	"github.com/evergreen-ci/evergreen/graphql/resolvers/util"
 	"github.com/evergreen-ci/evergreen/model"
 	"github.com/evergreen-ci/evergreen/model/build"
 	"github.com/evergreen-ci/evergreen/model/event"
@@ -22,45 +24,45 @@ import (
 )
 
 func (r *mutationResolver) ClearMySubscriptions(ctx context.Context) (int, error) {
-	usr := gql.MustHaveUser(ctx)
+	usr := util.MustHaveUser(ctx)
 	username := usr.Username()
 	subs, err := event.FindSubscriptionsByOwner(username, event.OwnerTypePerson)
 	if err != nil {
-		return 0, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error retrieving subscriptions %s", err.Error()))
+		return 0, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error retrieving subscriptions %s", err.Error()))
 	}
-	subIDs := gql.RemoveGeneralSubscriptions(usr, subs)
+	subIDs := util.RemoveGeneralSubscriptions(usr, subs)
 	err = data.DeleteSubscriptions(username, subIDs)
 	if err != nil {
-		return 0, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error deleting subscriptions %s", err.Error()))
+		return 0, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error deleting subscriptions %s", err.Error()))
 	}
 	return len(subIDs), nil
 }
 
 func (r *mutationResolver) CreatePublicKey(ctx context.Context, publicKeyInput gqlModel.PublicKeyInput) ([]*restModel.APIPubKey, error) {
-	err := gql.SavePublicKey(ctx, publicKeyInput)
+	err := util.SavePublicKey(ctx, publicKeyInput)
 	if err != nil {
 		return nil, err
 	}
-	myPublicKeys := gql.GetMyPublicKeys(ctx)
+	myPublicKeys := util.GetMyPublicKeys(ctx)
 	return myPublicKeys, nil
 }
 
 func (r *mutationResolver) RemovePublicKey(ctx context.Context, keyName string) ([]*restModel.APIPubKey, error) {
-	if !gql.DoesPublicKeyNameAlreadyExist(ctx, keyName) {
-		return nil, gql.InputValidationError.Send(ctx, fmt.Sprintf("Error deleting public key. Provided key name, %s, does not exist.", keyName))
+	if !util.DoesPublicKeyNameAlreadyExist(ctx, keyName) {
+		return nil, gqlError.InputValidationError.Send(ctx, fmt.Sprintf("Error deleting public key. Provided key name, %s, does not exist.", keyName))
 	}
-	err := gql.MustHaveUser(ctx).DeletePublicKey(keyName)
+	err := util.MustHaveUser(ctx).DeletePublicKey(keyName)
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error deleting public key: %s", err.Error()))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error deleting public key: %s", err.Error()))
 	}
-	myPublicKeys := gql.GetMyPublicKeys(ctx)
+	myPublicKeys := util.GetMyPublicKeys(ctx)
 	return myPublicKeys, nil
 }
 
 func (r *mutationResolver) SaveSubscription(ctx context.Context, subscription restModel.APISubscription) (bool, error) {
-	usr := gql.MustHaveUser(ctx)
+	usr := util.MustHaveUser(ctx)
 	username := usr.Username()
-	idType, id, err := gql.GetResourceTypeAndIdFromSubscriptionSelectors(ctx, subscription.Selectors)
+	idType, id, err := util.GetResourceTypeAndIdFromSubscriptionSelectors(ctx, subscription.Selectors)
 	if err != nil {
 		return false, err
 	}
@@ -68,75 +70,75 @@ func (r *mutationResolver) SaveSubscription(ctx context.Context, subscription re
 	case "task":
 		t, taskErr := task.FindOneId(id)
 		if taskErr != nil {
-			return false, gql.InternalServerError.Send(ctx, fmt.Sprintf("error finding task by id %s: %s", id, taskErr.Error()))
+			return false, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("error finding task by id %s: %s", id, taskErr.Error()))
 		}
 		if t == nil {
-			return false, gql.ResourceNotFound.Send(ctx, fmt.Sprintf("cannot find task with id %s", id))
+			return false, gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("cannot find task with id %s", id))
 		}
 	case "build":
 		b, buildErr := build.FindOneId(id)
 		if buildErr != nil {
-			return false, gql.InternalServerError.Send(ctx, fmt.Sprintf("error finding build by id %s: %s", id, buildErr.Error()))
+			return false, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("error finding build by id %s: %s", id, buildErr.Error()))
 		}
 		if b == nil {
-			return false, gql.ResourceNotFound.Send(ctx, fmt.Sprintf("cannot find build with id %s", id))
+			return false, gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("cannot find build with id %s", id))
 		}
 	case "version":
 		v, versionErr := model.VersionFindOneId(id)
 		if versionErr != nil {
-			return false, gql.InternalServerError.Send(ctx, fmt.Sprintf("error finding version by id %s: %s", id, versionErr.Error()))
+			return false, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("error finding version by id %s: %s", id, versionErr.Error()))
 		}
 		if v == nil {
-			return false, gql.ResourceNotFound.Send(ctx, fmt.Sprintf("cannot find version with id %s", id))
+			return false, gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("cannot find version with id %s", id))
 		}
 	case "project":
 		p, projectErr := data.FindProjectById(id, false, false)
 		if projectErr != nil {
-			return false, gql.InternalServerError.Send(ctx, fmt.Sprintf("error finding project by id %s: %s", id, projectErr.Error()))
+			return false, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("error finding project by id %s: %s", id, projectErr.Error()))
 		}
 		if p == nil {
-			return false, gql.ResourceNotFound.Send(ctx, fmt.Sprintf("cannot find project with id %s", id))
+			return false, gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("cannot find project with id %s", id))
 		}
 	default:
-		return false, gql.InputValidationError.Send(ctx, "Selectors do not indicate a target version, build, project, or task ID")
+		return false, gqlError.InputValidationError.Send(ctx, "Selectors do not indicate a target version, build, project, or task ID")
 	}
 	err = data.SaveSubscriptions(username, []restModel.APISubscription{subscription}, false)
 	if err != nil {
-		return false, gql.InternalServerError.Send(ctx, fmt.Sprintf("error saving subscription: %s", err.Error()))
+		return false, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("error saving subscription: %s", err.Error()))
 	}
 	return true, nil
 }
 
 func (r *mutationResolver) UpdatePublicKey(ctx context.Context, targetKeyName string, updateInfo gqlModel.PublicKeyInput) ([]*restModel.APIPubKey, error) {
-	if !gql.DoesPublicKeyNameAlreadyExist(ctx, targetKeyName) {
-		return nil, gql.InputValidationError.Send(ctx, fmt.Sprintf("Error updating public key. The target key name, %s, does not exist.", targetKeyName))
+	if !util.DoesPublicKeyNameAlreadyExist(ctx, targetKeyName) {
+		return nil, gqlError.InputValidationError.Send(ctx, fmt.Sprintf("Error updating public key. The target key name, %s, does not exist.", targetKeyName))
 	}
-	if updateInfo.Name != targetKeyName && gql.DoesPublicKeyNameAlreadyExist(ctx, updateInfo.Name) {
-		return nil, gql.InputValidationError.Send(ctx, fmt.Sprintf("Error updating public key. The updated key name, %s, already exists.", targetKeyName))
+	if updateInfo.Name != targetKeyName && util.DoesPublicKeyNameAlreadyExist(ctx, updateInfo.Name) {
+		return nil, gqlError.InputValidationError.Send(ctx, fmt.Sprintf("Error updating public key. The updated key name, %s, already exists.", targetKeyName))
 	}
-	err := gql.VerifyPublicKey(ctx, updateInfo)
+	err := util.VerifyPublicKey(ctx, updateInfo)
 	if err != nil {
 		return nil, err
 	}
-	usr := gql.MustHaveUser(ctx)
+	usr := util.MustHaveUser(ctx)
 	err = usr.UpdatePublicKey(targetKeyName, updateInfo.Name, updateInfo.Key)
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error updating public key, %s: %s", targetKeyName, err.Error()))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error updating public key, %s: %s", targetKeyName, err.Error()))
 	}
-	myPublicKeys := gql.GetMyPublicKeys(ctx)
+	myPublicKeys := util.GetMyPublicKeys(ctx)
 	return myPublicKeys, nil
 }
 
 func (r *mutationResolver) UpdateUserSettings(ctx context.Context, userSettings *restModel.APIUserSettings) (bool, error) {
-	usr := gql.MustHaveUser(ctx)
+	usr := util.MustHaveUser(ctx)
 
 	updatedUserSettings, err := restModel.UpdateUserSettings(ctx, usr, *userSettings)
 	if err != nil {
-		return false, gql.InternalServerError.Send(ctx, err.Error())
+		return false, gqlError.InternalServerError.Send(ctx, err.Error())
 	}
 	err = data.UpdateSettings(usr, *updatedUserSettings)
 	if err != nil {
-		return false, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error saving userSettings : %s", err.Error()))
+		return false, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error saving userSettings : %s", err.Error()))
 	}
 	return true, nil
 }
@@ -144,7 +146,7 @@ func (r *mutationResolver) UpdateUserSettings(ctx context.Context, userSettings 
 func (r *permissionsResolver) CanCreateProject(ctx context.Context, obj *gqlModel.Permissions) (bool, error) {
 	usr, err := user.FindOneById(obj.UserID)
 	if err != nil {
-		return false, gql.ResourceNotFound.Send(ctx, "user not found")
+		return false, gqlError.ResourceNotFound.Send(ctx, "user not found")
 	}
 	return usr.HasPermission(gimlet.PermissionOpts{
 		Resource:      evergreen.SuperUserPermissionsID,
@@ -155,20 +157,20 @@ func (r *permissionsResolver) CanCreateProject(ctx context.Context, obj *gqlMode
 }
 
 func (r *queryResolver) MyPublicKeys(ctx context.Context) ([]*restModel.APIPubKey, error) {
-	publicKeys := gql.GetMyPublicKeys(ctx)
+	publicKeys := util.GetMyPublicKeys(ctx)
 	return publicKeys, nil
 }
 
 func (r *queryResolver) User(ctx context.Context, userID *string) (*restModel.APIDBUser, error) {
-	usr := gql.MustHaveUser(ctx)
+	usr := util.MustHaveUser(ctx)
 	var err error
 	if userID != nil {
 		usr, err = user.FindOneById(*userID)
 		if err != nil {
-			return nil, gql.ResourceNotFound.Send(ctx, fmt.Sprintf("Error getting user from user ID: %s", err.Error()))
+			return nil, gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("Error getting user from user ID: %s", err.Error()))
 		}
 		if usr == nil {
-			return nil, gql.ResourceNotFound.Send(ctx, "Could not find user from user ID")
+			return nil, gqlError.ResourceNotFound.Send(ctx, "Could not find user from user ID")
 		}
 	}
 	displayName := usr.DisplayName()
@@ -183,7 +185,7 @@ func (r *queryResolver) User(ctx context.Context, userID *string) (*restModel.AP
 }
 
 func (r *queryResolver) UserConfig(ctx context.Context) (*gqlModel.UserConfig, error) {
-	usr := gql.MustHaveUser(ctx)
+	usr := util.MustHaveUser(ctx)
 	settings := evergreen.GetEnvironment().Settings()
 	config := &gqlModel.UserConfig{
 		User:          usr.Username(),
@@ -195,11 +197,11 @@ func (r *queryResolver) UserConfig(ctx context.Context) (*gqlModel.UserConfig, e
 }
 
 func (r *queryResolver) UserSettings(ctx context.Context) (*restModel.APIUserSettings, error) {
-	usr := gql.MustHaveUser(ctx)
+	usr := util.MustHaveUser(ctx)
 	userSettings := restModel.APIUserSettings{}
 	err := userSettings.BuildFromService(usr.Settings)
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, err.Error())
+		return nil, gqlError.InternalServerError.Send(ctx, err.Error())
 	}
 	return &userSettings, nil
 }
@@ -209,10 +211,10 @@ func (r *userResolver) Permissions(ctx context.Context, obj *restModel.APIDBUser
 }
 
 // Permissions returns gql.PermissionsResolver implementation.
-func (r *Resolver) Permissions() gql.PermissionsResolver { return &permissionsResolver{r} }
+func (r *Resolver) Permissions() generated.PermissionsResolver { return &permissionsResolver{r} }
 
 // User returns gql.UserResolver implementation.
-func (r *Resolver) User() gql.UserResolver { return &userResolver{r} }
+func (r *Resolver) User() generated.UserResolver { return &userResolver{r} }
 
 type permissionsResolver struct{ *Resolver }
 type userResolver struct{ *Resolver }

@@ -11,8 +11,10 @@ import (
 
 	"github.com/evergreen-ci/evergreen"
 	"github.com/evergreen-ci/evergreen/api"
-	gql "github.com/evergreen-ci/evergreen/graphql"
+	gqlError "github.com/evergreen-ci/evergreen/graphql/errors"
+	"github.com/evergreen-ci/evergreen/graphql/generated"
 	gqlModel "github.com/evergreen-ci/evergreen/graphql/model"
+	"github.com/evergreen-ci/evergreen/graphql/resolvers/util"
 	"github.com/evergreen-ci/evergreen/model"
 	"github.com/evergreen-ci/evergreen/model/distro"
 	"github.com/evergreen-ci/evergreen/model/event"
@@ -37,7 +39,7 @@ func (r *hostResolver) HomeVolume(ctx context.Context, obj *restModel.APIHost) (
 		volId := utility.FromStringPtr(obj.HomeVolumeID)
 		volume, err := host.FindVolumeByID(volId)
 		if err != nil {
-			return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error getting volume %s: %s", volId, err.Error()))
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error getting volume %s: %s", volId, err.Error()))
 		}
 		if volume == nil {
 			grip.Error(message.Fields{
@@ -51,7 +53,7 @@ func (r *hostResolver) HomeVolume(ctx context.Context, obj *restModel.APIHost) (
 		apiVolume := &restModel.APIVolume{}
 		err = apiVolume.BuildFromService(volume)
 		if err != nil {
-			return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error building volume '%s' from service: %s", volId, err.Error()))
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error building volume '%s' from service: %s", volId, err.Error()))
 		}
 		return apiVolume, nil
 	}
@@ -67,7 +69,7 @@ func (r *hostResolver) Volumes(ctx context.Context, obj *restModel.APIHost) ([]*
 	for _, volId := range obj.AttachedVolumeIDs {
 		volume, err := host.FindVolumeByID(volId)
 		if err != nil {
-			return volumes, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error getting volume %s", volId))
+			return volumes, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error getting volume %s", volId))
 		}
 		if volume == nil {
 			continue
@@ -75,7 +77,7 @@ func (r *hostResolver) Volumes(ctx context.Context, obj *restModel.APIHost) ([]*
 		apiVolume := &restModel.APIVolume{}
 		err = apiVolume.BuildFromService(volume)
 		if err != nil {
-			return nil, gql.InternalServerError.Send(ctx, errors.Wrapf(err, "error building volume '%s' from service", volId).Error())
+			return nil, gqlError.InternalServerError.Send(ctx, errors.Wrapf(err, "error building volume '%s' from service", volId).Error())
 		}
 		volumes = append(volumes, apiVolume)
 	}
@@ -84,49 +86,49 @@ func (r *hostResolver) Volumes(ctx context.Context, obj *restModel.APIHost) ([]*
 }
 
 func (r *mutationResolver) ReprovisionToNew(ctx context.Context, hostIds []string) (int, error) {
-	user := gql.MustHaveUser(ctx)
+	user := util.MustHaveUser(ctx)
 
 	hosts, permissions, httpStatus, err := api.GetHostsAndUserPermissions(user, hostIds)
 	if err != nil {
-		return 0, gql.MapHTTPStatusToGqlError(ctx, httpStatus, err)
+		return 0, util.MapHTTPStatusToGqlError(ctx, httpStatus, err)
 	}
 
 	hostsUpdated, httpStatus, err := api.ModifyHostsWithPermissions(hosts, permissions, api.GetReprovisionToNewCallback(ctx, evergreen.GetEnvironment(), user.Username()))
 	if err != nil {
-		return 0, gql.MapHTTPStatusToGqlError(ctx, httpStatus, errors.Errorf("Error marking selected hosts as needing to reprovision: %s", err.Error()))
+		return 0, util.MapHTTPStatusToGqlError(ctx, httpStatus, errors.Errorf("Error marking selected hosts as needing to reprovision: %s", err.Error()))
 	}
 
 	return hostsUpdated, nil
 }
 
 func (r *mutationResolver) RestartJasper(ctx context.Context, hostIds []string) (int, error) {
-	user := gql.MustHaveUser(ctx)
+	user := util.MustHaveUser(ctx)
 
 	hosts, permissions, httpStatus, err := api.GetHostsAndUserPermissions(user, hostIds)
 	if err != nil {
-		return 0, gql.MapHTTPStatusToGqlError(ctx, httpStatus, err)
+		return 0, util.MapHTTPStatusToGqlError(ctx, httpStatus, err)
 	}
 
 	hostsUpdated, httpStatus, err := api.ModifyHostsWithPermissions(hosts, permissions, api.GetRestartJasperCallback(ctx, evergreen.GetEnvironment(), user.Username()))
 	if err != nil {
-		return 0, gql.MapHTTPStatusToGqlError(ctx, httpStatus, errors.Errorf("Error marking selected hosts as needing Jasper service restarted: %s", err.Error()))
+		return 0, util.MapHTTPStatusToGqlError(ctx, httpStatus, errors.Errorf("Error marking selected hosts as needing Jasper service restarted: %s", err.Error()))
 	}
 
 	return hostsUpdated, nil
 }
 
 func (r *mutationResolver) UpdateHostStatus(ctx context.Context, hostIds []string, status string, notes *string) (int, error) {
-	user := gql.MustHaveUser(ctx)
+	user := util.MustHaveUser(ctx)
 
 	hosts, permissions, httpStatus, err := api.GetHostsAndUserPermissions(user, hostIds)
 	if err != nil {
-		return 0, gql.MapHTTPStatusToGqlError(ctx, httpStatus, err)
+		return 0, util.MapHTTPStatusToGqlError(ctx, httpStatus, err)
 	}
 
 	rq := evergreen.GetEnvironment().RemoteQueue()
 	hostsUpdated, httpStatus, err := api.ModifyHostsWithPermissions(hosts, permissions, api.GetUpdateHostStatusCallback(ctx, evergreen.GetEnvironment(), rq, status, *notes, user))
 	if err != nil {
-		return 0, gql.MapHTTPStatusToGqlError(ctx, httpStatus, err)
+		return 0, util.MapHTTPStatusToGqlError(ctx, httpStatus, err)
 	}
 
 	return hostsUpdated, nil
@@ -139,13 +141,13 @@ func (r *queryResolver) Distros(ctx context.Context, onlySpawnable bool) ([]*res
 	if onlySpawnable {
 		d, err := distro.Find(distro.BySpawnAllowed())
 		if err != nil {
-			return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error while fetching spawnable distros: %s", err.Error()))
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error while fetching spawnable distros: %s", err.Error()))
 		}
 		distros = d
 	} else {
 		d, err := distro.FindAll()
 		if err != nil {
-			return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error while fetching distros: %s", err.Error()))
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error while fetching distros: %s", err.Error()))
 		}
 		distros = d
 	}
@@ -153,7 +155,7 @@ func (r *queryResolver) Distros(ctx context.Context, onlySpawnable bool) ([]*res
 		apiDistro := restModel.APIDistro{}
 		err := apiDistro.BuildFromService(d)
 		if err != nil {
-			return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Unable to build APIDistro from distro: %s", err.Error()))
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Unable to build APIDistro from distro: %s", err.Error()))
 		}
 		apiDistros = append(apiDistros, &apiDistro)
 	}
@@ -163,10 +165,10 @@ func (r *queryResolver) Distros(ctx context.Context, onlySpawnable bool) ([]*res
 func (r *queryResolver) DistroTaskQueue(ctx context.Context, distroID string) ([]*restModel.APITaskQueueItem, error) {
 	distroQueue, err := model.LoadTaskQueue(distroID)
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error getting task queue for distro %v: %v", distroID, err.Error()))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error getting task queue for distro %v: %v", distroID, err.Error()))
 	}
 	if distroQueue == nil {
-		return nil, gql.ResourceNotFound.Send(ctx, fmt.Sprintf("cannot find queue with distro ID `%s`", distroID))
+		return nil, gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("cannot find queue with distro ID `%s`", distroID))
 	}
 
 	taskQueue := []*restModel.APITaskQueueItem{}
@@ -175,7 +177,7 @@ func (r *queryResolver) DistroTaskQueue(ctx context.Context, distroID string) ([
 		apiTaskQueueItem := restModel.APITaskQueueItem{}
 		err := apiTaskQueueItem.BuildFromService(taskQueueItem)
 		if err != nil {
-			return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error converting task queue item db model to api model: %v", err.Error()))
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error converting task queue item db model to api model: %v", err.Error()))
 		}
 		taskQueue = append(taskQueue, &apiTaskQueueItem)
 	}
@@ -186,7 +188,7 @@ func (r *queryResolver) DistroTaskQueue(ctx context.Context, distroID string) ([
 func (r *queryResolver) Host(ctx context.Context, hostID string) (*restModel.APIHost, error) {
 	host, err := host.GetHostByIdOrTagWithTask(hostID)
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error Fetching host: %s", err.Error()))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error Fetching host: %s", err.Error()))
 	}
 	if host == nil {
 		return nil, errors.Errorf("unable to find host %s", hostID)
@@ -195,13 +197,13 @@ func (r *queryResolver) Host(ctx context.Context, hostID string) (*restModel.API
 	apiHost := &restModel.APIHost{}
 	err = apiHost.BuildFromService(host)
 	if err != nil || apiHost == nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error converting from host.Host to model.APIHost: %s", err.Error()))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error converting from host.Host to model.APIHost: %s", err.Error()))
 	}
 
 	if host.RunningTask != "" {
 		// Add the task information to the host document.
 		if err = apiHost.BuildFromService(host.RunningTaskFull); err != nil {
-			return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error converting from host.Host to model.APIHost: %s", err.Error()))
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error converting from host.Host to model.APIHost: %s", err.Error()))
 		}
 	}
 
@@ -211,14 +213,14 @@ func (r *queryResolver) Host(ctx context.Context, hostID string) (*restModel.API
 func (r *queryResolver) HostEvents(ctx context.Context, hostID string, hostTag *string, limit *int, page *int) (*gqlModel.HostEvents, error) {
 	h, err := host.FindOneByIdOrTag(hostID)
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error finding host %s: %s", hostID, err.Error()))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error finding host %s: %s", hostID, err.Error()))
 	}
 	if h == nil {
-		return nil, gql.ResourceNotFound.Send(ctx, fmt.Sprintf("Host %s not found", hostID))
+		return nil, gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("Host %s not found", hostID))
 	}
 	events, err := event.FindPaginated(h.Id, h.Tag, event.AllLogCollection, *limit, *page)
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error Fetching host events: %s", err.Error()))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error Fetching host events: %s", err.Error()))
 	}
 	// populate eventlogs pointer arrays
 	apiEventLogPointers := []*restModel.HostAPIEventLogEntry{}
@@ -226,7 +228,7 @@ func (r *queryResolver) HostEvents(ctx context.Context, hostID string, hostTag *
 		apiEventLog := restModel.HostAPIEventLogEntry{}
 		err = apiEventLog.BuildFromService(&e)
 		if err != nil {
-			return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Unable to build APIEventLogEntry from EventLog: %s", err.Error()))
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Unable to build APIEventLogEntry from EventLog: %s", err.Error()))
 		}
 		apiEventLogPointers = append(apiEventLogPointers, &apiEventLog)
 	}
@@ -293,7 +295,7 @@ func (r *queryResolver) Hosts(ctx context.Context, hostID *string, distroID *str
 
 	hosts, filteredHostsCount, totalHostsCount, err := host.GetPaginatedRunningHosts(hostIDParam, distroParam, currentTaskParam, statuses, startedByParam, sorter, sortDirParam, pageParam, limitParam)
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error getting hosts: %s", err.Error()))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error getting hosts: %s", err.Error()))
 	}
 
 	apiHosts := []*restModel.APIHost{}
@@ -303,13 +305,13 @@ func (r *queryResolver) Hosts(ctx context.Context, hostID *string, distroID *str
 
 		err = apiHost.BuildFromService(host)
 		if err != nil {
-			return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error building API Host from Service: %s", err.Error()))
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error building API Host from Service: %s", err.Error()))
 		}
 
 		if host.RunningTask != "" {
 			// Add the task information to the host document.
 			if err = apiHost.BuildFromService(host.RunningTaskFull); err != nil {
-				return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error converting from host.Host to model.APIHost: %s", err.Error()))
+				return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error converting from host.Host to model.APIHost: %s", err.Error()))
 			}
 		}
 
@@ -326,7 +328,7 @@ func (r *queryResolver) Hosts(ctx context.Context, hostID *string, distroID *str
 func (r *queryResolver) TaskQueueDistros(ctx context.Context) ([]*gqlModel.TaskQueueDistro, error) {
 	queues, err := model.FindAllTaskQueues()
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error getting all task queues: %v", err.Error()))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error getting all task queues: %v", err.Error()))
 	}
 
 	distros := []*gqlModel.TaskQueueDistro{}
@@ -334,7 +336,7 @@ func (r *queryResolver) TaskQueueDistros(ctx context.Context) ([]*gqlModel.TaskQ
 	for _, distro := range queues {
 		numHosts, err := host.CountRunningHosts(distro.Distro)
 		if err != nil {
-			return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error getting associated hosts: %s", err.Error()))
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error getting associated hosts: %s", err.Error()))
 		}
 		tqd := gqlModel.TaskQueueDistro{
 			ID:        distro.Distro,
@@ -365,27 +367,27 @@ func (r *volumeResolver) Host(ctx context.Context, obj *restModel.APIVolume) (*r
 	}
 	host, err := host.FindOneId(*obj.HostID)
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error finding host %s: %s", *obj.HostID, err.Error()))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error finding host %s: %s", *obj.HostID, err.Error()))
 	}
 	if host == nil {
-		return nil, gql.ResourceNotFound.Send(ctx, fmt.Sprintf("Unable to find host %s", *obj.HostID))
+		return nil, gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("Unable to find host %s", *obj.HostID))
 	}
 	apiHost := restModel.APIHost{}
 	err = apiHost.BuildFromService(host)
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error building apiHost %s from service: %s", host.Id, err))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error building apiHost %s from service: %s", host.Id, err))
 	}
 	return &apiHost, nil
 }
 
 // Host returns gql.HostResolver implementation.
-func (r *Resolver) Host() gql.HostResolver { return &hostResolver{r} }
+func (r *Resolver) Host() generated.HostResolver { return &hostResolver{r} }
 
 // TaskQueueItem returns gql.TaskQueueItemResolver implementation.
-func (r *Resolver) TaskQueueItem() gql.TaskQueueItemResolver { return &taskQueueItemResolver{r} }
+func (r *Resolver) TaskQueueItem() generated.TaskQueueItemResolver { return &taskQueueItemResolver{r} }
 
 // Volume returns gql.VolumeResolver implementation.
-func (r *Resolver) Volume() gql.VolumeResolver { return &volumeResolver{r} }
+func (r *Resolver) Volume() generated.VolumeResolver { return &volumeResolver{r} }
 
 type hostResolver struct{ *Resolver }
 type taskQueueItemResolver struct{ *Resolver }

@@ -13,8 +13,9 @@ import (
 
 	"github.com/evergreen-ci/evergreen"
 	"github.com/evergreen-ci/evergreen/cloud"
-	gql "github.com/evergreen-ci/evergreen/graphql"
+	gqlError "github.com/evergreen-ci/evergreen/graphql/errors"
 	gqlModel "github.com/evergreen-ci/evergreen/graphql/model"
+	"github.com/evergreen-ci/evergreen/graphql/resolvers/util"
 	"github.com/evergreen-ci/evergreen/model/distro"
 	"github.com/evergreen-ci/evergreen/model/host"
 	"github.com/evergreen-ci/evergreen/model/task"
@@ -30,7 +31,7 @@ import (
 func (r *mutationResolver) AttachVolumeToHost(ctx context.Context, volumeAndHost gqlModel.VolumeHost) (bool, error) {
 	statusCode, err := cloud.AttachVolume(ctx, volumeAndHost.VolumeID, volumeAndHost.HostID)
 	if err != nil {
-		return false, gql.MapHTTPStatusToGqlError(ctx, statusCode, err)
+		return false, util.MapHTTPStatusToGqlError(ctx, statusCode, err)
 	}
 	return statusCode == http.StatusOK, nil
 }
@@ -38,21 +39,21 @@ func (r *mutationResolver) AttachVolumeToHost(ctx context.Context, volumeAndHost
 func (r *mutationResolver) DetachVolumeFromHost(ctx context.Context, volumeID string) (bool, error) {
 	statusCode, err := cloud.DetachVolume(ctx, volumeID)
 	if err != nil {
-		return false, gql.MapHTTPStatusToGqlError(ctx, statusCode, err)
+		return false, util.MapHTTPStatusToGqlError(ctx, statusCode, err)
 	}
 	return statusCode == http.StatusOK, nil
 }
 
 func (r *mutationResolver) EditSpawnHost(ctx context.Context, editSpawnHostInput *gqlModel.EditSpawnHostInput) (*restModel.APIHost, error) {
 	var v *host.Volume
-	usr := gql.MustHaveUser(ctx)
+	usr := util.MustHaveUser(ctx)
 	h, err := host.FindOneByIdOrTag(editSpawnHostInput.HostID)
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error finding host by id: %s", err))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error finding host by id: %s", err))
 	}
 
 	if !host.CanUpdateSpawnHost(h, usr) {
-		return nil, gql.Forbidden.Send(ctx, "You are not authorized to modify this host")
+		return nil, gqlError.Forbidden.Send(ctx, "You are not authorized to modify this host")
 	}
 
 	opts := host.HostModifyOptions{}
@@ -65,20 +66,20 @@ func (r *mutationResolver) EditSpawnHost(ctx context.Context, editSpawnHostInput
 	if editSpawnHostInput.Expiration != nil {
 		err = h.SetExpirationTime(*editSpawnHostInput.Expiration)
 		if err != nil {
-			return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error while modifying spawnhost expiration time: %s", err))
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error while modifying spawnhost expiration time: %s", err))
 		}
 	}
 	if editSpawnHostInput.InstanceType != nil {
 		var config *evergreen.Settings
 		config, err = evergreen.GetConfig()
 		if err != nil {
-			return nil, gql.InternalServerError.Send(ctx, "unable to retrieve server config")
+			return nil, gqlError.InternalServerError.Send(ctx, "unable to retrieve server config")
 		}
 		allowedTypes := config.Providers.AWS.AllowedInstanceTypes
 
 		err = cloud.CheckInstanceTypeValid(ctx, h.Distro, *editSpawnHostInput.InstanceType, allowedTypes)
 		if err != nil {
-			return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error validating instance type: %s", err))
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error validating instance type: %s", err))
 		}
 		opts.InstanceType = *editSpawnHostInput.InstanceType
 	}
@@ -98,16 +99,16 @@ func (r *mutationResolver) EditSpawnHost(ctx context.Context, editSpawnHostInput
 	if editSpawnHostInput.Volume != nil {
 		v, err = host.FindVolumeByID(*editSpawnHostInput.Volume)
 		if err != nil {
-			return nil, gql.ResourceNotFound.Send(ctx, fmt.Sprintf("Error finding requested volume id: %s", err))
+			return nil, gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("Error finding requested volume id: %s", err))
 		}
 		if v.AvailabilityZone != h.Zone {
-			return nil, gql.InputValidationError.Send(ctx, "Error mounting volume to spawn host, They must be in the same availability zone.")
+			return nil, gqlError.InputValidationError.Send(ctx, "Error mounting volume to spawn host, They must be in the same availability zone.")
 		}
 		opts.AttachVolume = *editSpawnHostInput.Volume
 	}
 	if editSpawnHostInput.PublicKey != nil {
 		if utility.FromBoolPtr(editSpawnHostInput.SavePublicKey) {
-			if err = gql.SavePublicKey(ctx, *editSpawnHostInput.PublicKey); err != nil {
+			if err = util.SavePublicKey(ctx, *editSpawnHostInput.PublicKey); err != nil {
 				return nil, err
 			}
 		}
@@ -115,40 +116,40 @@ func (r *mutationResolver) EditSpawnHost(ctx context.Context, editSpawnHostInput
 		if opts.AddKey == "" {
 			opts.AddKey, err = usr.GetPublicKey(editSpawnHostInput.PublicKey.Name)
 			if err != nil {
-				return nil, gql.InputValidationError.Send(ctx, fmt.Sprintf("No matching key found for name '%s'", editSpawnHostInput.PublicKey.Name))
+				return nil, gqlError.InputValidationError.Send(ctx, fmt.Sprintf("No matching key found for name '%s'", editSpawnHostInput.PublicKey.Name))
 			}
 		}
 	}
 	if err = cloud.ModifySpawnHost(ctx, evergreen.GetEnvironment(), h, opts); err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error modifying spawn host: %s", err))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error modifying spawn host: %s", err))
 	}
 	if editSpawnHostInput.ServicePassword != nil {
 		_, err = cloud.SetHostRDPPassword(ctx, evergreen.GetEnvironment(), h, *editSpawnHostInput.ServicePassword)
 		if err != nil {
-			return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error setting spawn host password: %s", err))
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error setting spawn host password: %s", err))
 		}
 	}
 
 	apiHost := restModel.APIHost{}
 	err = apiHost.BuildFromService(h)
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error building apiHost from service: %s", err))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error building apiHost from service: %s", err))
 	}
 	return &apiHost, nil
 }
 
 func (r *queryResolver) MyHosts(ctx context.Context) ([]*restModel.APIHost, error) {
-	usr := gql.MustHaveUser(ctx)
+	usr := util.MustHaveUser(ctx)
 	hosts, err := host.Find(host.ByUserWithRunningStatus(usr.Username()))
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx,
+		return nil, gqlError.InternalServerError.Send(ctx,
 			fmt.Sprintf("Error finding running hosts for user %s : %s", usr.Username(), err))
 	}
 	duration := time.Duration(5) * time.Minute
 	timestamp := time.Now().Add(-duration) // within last 5 minutes
 	recentlyTerminatedHosts, err := host.Find(host.ByUserRecentlyTerminated(usr.Username(), timestamp))
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx,
+		return nil, gqlError.InternalServerError.Send(ctx,
 			fmt.Sprintf("Error finding recently terminated hosts for user %s : %s", usr.Username(), err))
 	}
 	hosts = append(hosts, recentlyTerminatedHosts...)
@@ -158,7 +159,7 @@ func (r *queryResolver) MyHosts(ctx context.Context) ([]*restModel.APIHost, erro
 		apiHost := restModel.APIHost{}
 		err = apiHost.BuildFromService(host)
 		if err != nil {
-			return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error building APIHost from service: %s", err.Error()))
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error building APIHost from service: %s", err.Error()))
 		}
 		apiHosts = append(apiHosts, &apiHost)
 	}
@@ -166,27 +167,27 @@ func (r *queryResolver) MyHosts(ctx context.Context) ([]*restModel.APIHost, erro
 }
 
 func (r *queryResolver) MyVolumes(ctx context.Context) ([]*restModel.APIVolume, error) {
-	usr := gql.MustHaveUser(ctx)
+	usr := util.MustHaveUser(ctx)
 	volumes, err := host.FindSortedVolumesByUser(usr.Username())
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, err.Error())
+		return nil, gqlError.InternalServerError.Send(ctx, err.Error())
 	}
-	return gql.GetAPIVolumeList(volumes)
+	return util.GetAPIVolumeList(volumes)
 }
 
 func (r *mutationResolver) SpawnHost(ctx context.Context, spawnHostInput *gqlModel.SpawnHostInput) (*restModel.APIHost, error) {
-	usr := gql.MustHaveUser(ctx)
+	usr := util.MustHaveUser(ctx)
 	if spawnHostInput.SavePublicKey {
-		if err := gql.SavePublicKey(ctx, *spawnHostInput.PublicKey); err != nil {
+		if err := util.SavePublicKey(ctx, *spawnHostInput.PublicKey); err != nil {
 			return nil, err
 		}
 	}
 	dist, err := distro.FindOneId(spawnHostInput.DistroID)
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error while trying to find distro with id: %s, err:  `%s`", spawnHostInput.DistroID, err))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error while trying to find distro with id: %s, err:  `%s`", spawnHostInput.DistroID, err))
 	}
 	if dist == nil {
-		return nil, gql.ResourceNotFound.Send(ctx, fmt.Sprintf("Could not find Distro with id: %s", spawnHostInput.DistroID))
+		return nil, gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("Could not find Distro with id: %s", spawnHostInput.DistroID))
 	}
 
 	options := &restModel.HostRequestOptions{
@@ -218,48 +219,48 @@ func (r *mutationResolver) SpawnHost(ctx context.Context, spawnHostInput *gqlMod
 	if spawnHostInput.TaskID != nil && *spawnHostInput.TaskID != "" {
 		options.TaskID = *spawnHostInput.TaskID
 		if t, err = task.FindOneId(*spawnHostInput.TaskID); err != nil {
-			return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error occurred finding task %s: %s", *spawnHostInput.TaskID, err.Error()))
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error occurred finding task %s: %s", *spawnHostInput.TaskID, err.Error()))
 		}
 	}
 
 	if utility.FromBoolPtr(spawnHostInput.UseProjectSetupScript) {
 		if t == nil {
-			return nil, gql.ResourceNotFound.Send(ctx, "A valid task id must be supplied when useProjectSetupScript is set to true")
+			return nil, gqlError.ResourceNotFound.Send(ctx, "A valid task id must be supplied when useProjectSetupScript is set to true")
 		}
 		options.UseProjectSetupScript = *spawnHostInput.UseProjectSetupScript
 	}
 	if utility.FromBoolPtr(spawnHostInput.TaskSync) {
 		if t == nil {
-			return nil, gql.ResourceNotFound.Send(ctx, "A valid task id must be supplied when taskSync is set to true")
+			return nil, gqlError.ResourceNotFound.Send(ctx, "A valid task id must be supplied when taskSync is set to true")
 		}
 		options.TaskSync = *spawnHostInput.TaskSync
 	}
 
 	if utility.FromBoolPtr(spawnHostInput.SpawnHostsStartedByTask) {
 		if t == nil {
-			return nil, gql.ResourceNotFound.Send(ctx, "A valid task id must be supplied when SpawnHostsStartedByTask is set to true")
+			return nil, gqlError.ResourceNotFound.Send(ctx, "A valid task id must be supplied when SpawnHostsStartedByTask is set to true")
 		}
 		if err = data.CreateHostsFromTask(t, *usr, spawnHostInput.PublicKey.Key); err != nil {
-			return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error spawning hosts from task: %s : %s", *spawnHostInput.TaskID, err))
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error spawning hosts from task: %s : %s", *spawnHostInput.TaskID, err))
 		}
 	}
 
 	spawnHost, err := data.NewIntentHost(ctx, options, usr, evergreen.GetEnvironment().Settings())
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error spawning host: %s", err))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error spawning host: %s", err))
 	}
 	if spawnHost == nil {
-		return nil, gql.InternalServerError.Send(ctx, "An error occurred Spawn host is nil")
+		return nil, gqlError.InternalServerError.Send(ctx, "An error occurred Spawn host is nil")
 	}
 	apiHost := restModel.APIHost{}
 	if err := apiHost.BuildFromService(spawnHost); err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error building apiHost from service: %s", err))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error building apiHost from service: %s", err))
 	}
 	return &apiHost, nil
 }
 
 func (r *mutationResolver) SpawnVolume(ctx context.Context, spawnVolumeInput gqlModel.SpawnVolumeInput) (bool, error) {
-	err := gql.ValidateVolumeExpirationInput(ctx, spawnVolumeInput.Expiration, spawnVolumeInput.NoExpiration)
+	err := util.ValidateVolumeExpirationInput(ctx, spawnVolumeInput.Expiration, spawnVolumeInput.NoExpiration)
 	if err != nil {
 		return false, err
 	}
@@ -267,14 +268,14 @@ func (r *mutationResolver) SpawnVolume(ctx context.Context, spawnVolumeInput gql
 		AvailabilityZone: spawnVolumeInput.AvailabilityZone,
 		Size:             spawnVolumeInput.Size,
 		Type:             spawnVolumeInput.Type,
-		CreatedBy:        gql.MustHaveUser(ctx).Id,
+		CreatedBy:        util.MustHaveUser(ctx).Id,
 	}
 	vol, statusCode, err := cloud.RequestNewVolume(ctx, volumeRequest)
 	if err != nil {
-		return false, gql.MapHTTPStatusToGqlError(ctx, statusCode, err)
+		return false, util.MapHTTPStatusToGqlError(ctx, statusCode, err)
 	}
 	if vol == nil {
-		return false, gql.InternalServerError.Send(ctx, "Unable to create volume")
+		return false, gqlError.InternalServerError.Send(ctx, "Unable to create volume")
 	}
 	errorTemplate := "Volume %s has been created but an error occurred."
 	var additionalOptions restModel.VolumeModifyOptions
@@ -282,21 +283,21 @@ func (r *mutationResolver) SpawnVolume(ctx context.Context, spawnVolumeInput gql
 		var newExpiration time.Time
 		newExpiration, err = restModel.FromTimePtr(spawnVolumeInput.Expiration)
 		if err != nil {
-			return false, gql.InternalServerError.Send(ctx, errors.Wrapf(err, errorTemplate, vol.ID).Error())
+			return false, gqlError.InternalServerError.Send(ctx, errors.Wrapf(err, errorTemplate, vol.ID).Error())
 		}
 		additionalOptions.Expiration = newExpiration
 	} else if spawnVolumeInput.NoExpiration != nil && *spawnVolumeInput.NoExpiration {
 		// this value should only ever be true or nil
 		additionalOptions.NoExpiration = true
 	}
-	err = gql.ApplyVolumeOptions(ctx, *vol, additionalOptions)
+	err = util.ApplyVolumeOptions(ctx, *vol, additionalOptions)
 	if err != nil {
-		return false, gql.InternalServerError.Send(ctx, fmt.Sprintf("Unable to apply expiration options to volume %s: %s", vol.ID, err.Error()))
+		return false, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Unable to apply expiration options to volume %s: %s", vol.ID, err.Error()))
 	}
 	if spawnVolumeInput.Host != nil {
 		statusCode, err := cloud.AttachVolume(ctx, vol.ID, *spawnVolumeInput.Host)
 		if err != nil {
-			return false, gql.MapHTTPStatusToGqlError(ctx, statusCode, errors.Wrapf(err, errorTemplate, vol.ID))
+			return false, util.MapHTTPStatusToGqlError(ctx, statusCode, errors.Wrapf(err, errorTemplate, vol.ID))
 		}
 	}
 	return true, nil
@@ -305,7 +306,7 @@ func (r *mutationResolver) SpawnVolume(ctx context.Context, spawnVolumeInput gql
 func (r *mutationResolver) RemoveVolume(ctx context.Context, volumeID string) (bool, error) {
 	statusCode, err := cloud.DeleteVolume(ctx, volumeID)
 	if err != nil {
-		return false, gql.MapHTTPStatusToGqlError(ctx, statusCode, err)
+		return false, util.MapHTTPStatusToGqlError(ctx, statusCode, err)
 	}
 	return statusCode == http.StatusOK, nil
 }
@@ -313,13 +314,13 @@ func (r *mutationResolver) RemoveVolume(ctx context.Context, volumeID string) (b
 func (r *mutationResolver) UpdateSpawnHostStatus(ctx context.Context, hostID string, action gqlModel.SpawnHostStatusActions) (*restModel.APIHost, error) {
 	h, err := host.FindOneByIdOrTag(hostID)
 	if err != nil {
-		return nil, gql.ResourceNotFound.Send(ctx, fmt.Sprintf("Error finding host by id: %s", err))
+		return nil, gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("Error finding host by id: %s", err))
 	}
-	usr := gql.MustHaveUser(ctx)
+	usr := util.MustHaveUser(ctx)
 	env := evergreen.GetEnvironment()
 
 	if !host.CanUpdateSpawnHost(h, usr) {
-		return nil, gql.Forbidden.Send(ctx, "You are not authorized to modify this host")
+		return nil, gqlError.Forbidden.Send(ctx, "You are not authorized to modify this host")
 	}
 
 	var httpStatus int
@@ -331,7 +332,7 @@ func (r *mutationResolver) UpdateSpawnHostStatus(ctx context.Context, hostID str
 	case gqlModel.SpawnHostStatusActionsTerminate:
 		httpStatus, err = data.TerminateSpawnHost(ctx, env, usr, h)
 	default:
-		return nil, gql.ResourceNotFound.Send(ctx, fmt.Sprintf("Could not find matching status for action : %s", action))
+		return nil, gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("Could not find matching status for action : %s", action))
 	}
 	if err != nil {
 		if httpStatus == http.StatusInternalServerError {
@@ -345,12 +346,12 @@ func (r *mutationResolver) UpdateSpawnHostStatus(ctx context.Context, hostID str
 				"stack":   string(debug.Stack()),
 			}))
 		}
-		return nil, gql.MapHTTPStatusToGqlError(ctx, httpStatus, err)
+		return nil, util.MapHTTPStatusToGqlError(ctx, httpStatus, err)
 	}
 	apiHost := restModel.APIHost{}
 	err = apiHost.BuildFromService(h)
 	if err != nil {
-		return nil, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error building apiHost from service: %s", err))
+		return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error building apiHost from service: %s", err))
 	}
 	return &apiHost, nil
 }
@@ -358,16 +359,16 @@ func (r *mutationResolver) UpdateSpawnHostStatus(ctx context.Context, hostID str
 func (r *mutationResolver) UpdateVolume(ctx context.Context, updateVolumeInput gqlModel.UpdateVolumeInput) (bool, error) {
 	volume, err := host.FindVolumeByID(updateVolumeInput.VolumeID)
 	if err != nil {
-		return false, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error finding volume by id %s: %s", updateVolumeInput.VolumeID, err.Error()))
+		return false, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error finding volume by id %s: %s", updateVolumeInput.VolumeID, err.Error()))
 	}
 	if volume == nil {
-		return false, gql.ResourceNotFound.Send(ctx, fmt.Sprintf("Unable to find volume %s", volume.ID))
+		return false, gqlError.ResourceNotFound.Send(ctx, fmt.Sprintf("Unable to find volume %s", volume.ID))
 	}
-	err = gql.ValidateVolumeExpirationInput(ctx, updateVolumeInput.Expiration, updateVolumeInput.NoExpiration)
+	err = util.ValidateVolumeExpirationInput(ctx, updateVolumeInput.Expiration, updateVolumeInput.NoExpiration)
 	if err != nil {
 		return false, err
 	}
-	err = gql.ValidateVolumeName(ctx, updateVolumeInput.Name)
+	err = util.ValidateVolumeName(ctx, updateVolumeInput.Name)
 	if err != nil {
 		return false, err
 	}
@@ -385,16 +386,16 @@ func (r *mutationResolver) UpdateVolume(ctx context.Context, updateVolumeInput g
 		var newExpiration time.Time
 		newExpiration, err = restModel.FromTimePtr(updateVolumeInput.Expiration)
 		if err != nil {
-			return false, gql.InternalServerError.Send(ctx, fmt.Sprintf("Error parsing time %s", err))
+			return false, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error parsing time %s", err))
 		}
 		updateOptions.Expiration = newExpiration
 	}
 	if updateVolumeInput.Name != nil {
 		updateOptions.NewName = *updateVolumeInput.Name
 	}
-	err = gql.ApplyVolumeOptions(ctx, *volume, updateOptions)
+	err = util.ApplyVolumeOptions(ctx, *volume, updateOptions)
 	if err != nil {
-		return false, gql.InternalServerError.Send(ctx, fmt.Sprintf("Unable to update volume %s: %s", volume.ID, err.Error()))
+		return false, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Unable to update volume %s: %s", volume.ID, err.Error()))
 	}
 
 	return true, nil
