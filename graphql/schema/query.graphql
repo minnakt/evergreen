@@ -68,6 +68,10 @@ type Query {
   repoSettings(id: String! @requireProjectAccess(access: VIEW)): RepoSettings!
   viewableProjectRefs: [GroupedProjects]!
 
+  # spawn
+  myHosts: [Host!]!
+  myVolumes: [Volume!]!
+
   # task
   task(taskId: String!, execution: Int): Task
   taskAllExecutions(taskId: String!): [Task!]!

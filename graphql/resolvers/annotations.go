@@ -15,6 +15,7 @@ import (
 	"github.com/evergreen-ci/evergreen/model"
 	"github.com/evergreen-ci/evergreen/model/annotations"
 	"github.com/evergreen-ci/evergreen/model/task"
+	"github.com/evergreen-ci/evergreen/rest/data"
 	restModel "github.com/evergreen-ci/evergreen/rest/model"
 	"github.com/evergreen-ci/evergreen/thirdparty"
 	otherUtil "github.com/evergreen-ci/evergreen/util"
@@ -34,6 +35,14 @@ func (r *annotationResolver) WebhookConfigured(ctx context.Context, obj *restMod
 
 func (r *issueLinkResolver) JiraTicket(ctx context.Context, obj *restModel.APIIssueLink) (*thirdparty.JiraTicket, error) {
 	return restModel.GetJiraTicketFromURL(*obj.URL)
+}
+
+func (r *mutationResolver) BbCreateTicket(ctx context.Context, taskID string, execution *int) (bool, error) {
+	httpStatus, err := data.BbFileTicket(ctx, taskID, *execution)
+	if err != nil {
+		return false, util.MapHTTPStatusToGqlError(ctx, httpStatus, err)
+	}
+	return true, nil
 }
 
 func (r *mutationResolver) AddAnnotationIssue(ctx context.Context, taskID string, execution int, apiIssue restModel.APIIssueLink, isIssue bool) (bool, error) {

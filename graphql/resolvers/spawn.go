@@ -138,43 +138,6 @@ func (r *mutationResolver) EditSpawnHost(ctx context.Context, spawnHost *gqlMode
 	return &apiHost, nil
 }
 
-func (r *mutationResolver) MyHosts(ctx context.Context) ([]*restModel.APIHost, error) {
-	usr := util.MustHaveUser(ctx)
-	hosts, err := host.Find(host.ByUserWithRunningStatus(usr.Username()))
-	if err != nil {
-		return nil, gqlError.InternalServerError.Send(ctx,
-			fmt.Sprintf("Error finding running hosts for user %s : %s", usr.Username(), err))
-	}
-	duration := time.Duration(5) * time.Minute
-	timestamp := time.Now().Add(-duration) // within last 5 minutes
-	recentlyTerminatedHosts, err := host.Find(host.ByUserRecentlyTerminated(usr.Username(), timestamp))
-	if err != nil {
-		return nil, gqlError.InternalServerError.Send(ctx,
-			fmt.Sprintf("Error finding recently terminated hosts for user %s : %s", usr.Username(), err))
-	}
-	hosts = append(hosts, recentlyTerminatedHosts...)
-
-	var apiHosts []*restModel.APIHost
-	for _, host := range hosts {
-		apiHost := restModel.APIHost{}
-		err = apiHost.BuildFromService(host)
-		if err != nil {
-			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error building APIHost from service: %s", err.Error()))
-		}
-		apiHosts = append(apiHosts, &apiHost)
-	}
-	return apiHosts, nil
-}
-
-func (r *mutationResolver) MyVolumes(ctx context.Context) ([]*restModel.APIVolume, error) {
-	usr := util.MustHaveUser(ctx)
-	volumes, err := host.FindSortedVolumesByUser(usr.Username())
-	if err != nil {
-		return nil, gqlError.InternalServerError.Send(ctx, err.Error())
-	}
-	return util.GetAPIVolumeList(volumes)
-}
-
 func (r *mutationResolver) SpawnHost(ctx context.Context, spawnHostInput *gqlModel.SpawnHostInput) (*restModel.APIHost, error) {
 	usr := util.MustHaveUser(ctx)
 	if spawnHostInput.SavePublicKey {
@@ -356,6 +319,42 @@ func (r *mutationResolver) UpdateSpawnHostStatus(ctx context.Context, hostID str
 	return &apiHost, nil
 }
 
+func (r *queryResolver) MyHosts(ctx context.Context) ([]*restModel.APIHost, error) {
+	usr := util.MustHaveUser(ctx)
+	hosts, err := host.Find(host.ByUserWithRunningStatus(usr.Username()))
+	if err != nil {
+		return nil, gqlError.InternalServerError.Send(ctx,
+			fmt.Sprintf("Error finding running hosts for user %s : %s", usr.Username(), err))
+	}
+	duration := time.Duration(5) * time.Minute
+	timestamp := time.Now().Add(-duration) // within last 5 minutes
+	recentlyTerminatedHosts, err := host.Find(host.ByUserRecentlyTerminated(usr.Username(), timestamp))
+	if err != nil {
+		return nil, gqlError.InternalServerError.Send(ctx,
+			fmt.Sprintf("Error finding recently terminated hosts for user %s : %s", usr.Username(), err))
+	}
+	hosts = append(hosts, recentlyTerminatedHosts...)
+
+	var apiHosts []*restModel.APIHost
+	for _, host := range hosts {
+		apiHost := restModel.APIHost{}
+		err = apiHost.BuildFromService(host)
+		if err != nil {
+			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error building APIHost from service: %s", err.Error()))
+		}
+		apiHosts = append(apiHosts, &apiHost)
+	}
+	return apiHosts, nil
+}
+func (r *queryResolver) MyVolumes(ctx context.Context) ([]*restModel.APIVolume, error) {
+	usr := util.MustHaveUser(ctx)
+	volumes, err := host.FindSortedVolumesByUser(usr.Username())
+	if err != nil {
+		return nil, gqlError.InternalServerError.Send(ctx, err.Error())
+	}
+	return util.GetAPIVolumeList(volumes)
+}
+
 func (r *mutationResolver) UpdateVolume(ctx context.Context, updateVolumeInput gqlModel.UpdateVolumeInput) (bool, error) {
 	volume, err := host.FindVolumeByID(updateVolumeInput.VolumeID)
 	if err != nil {
@@ -399,46 +398,4 @@ func (r *mutationResolver) UpdateVolume(ctx context.Context, updateVolumeInput g
 	}
 
 	return true, nil
-}
-
-// !!! WARNING !!!
-// The code below was going to be deleted when updating resolvers. It has been copied here so you have
-// one last chance to move it out of harms way if you want. There are two reasons this happens:
-//  - When renaming or deleting a resolver the old code will be put in here. You can safely delete
-//    it when you're done.
-//  - You have helper methods in this file. Move them out to keep these resolver files clean.
-func (r *queryResolver) MyHosts(ctx context.Context) ([]*restModel.APIHost, error) {
-	usr := util.MustHaveUser(ctx)
-	hosts, err := host.Find(host.ByUserWithRunningStatus(usr.Username()))
-	if err != nil {
-		return nil, gqlError.InternalServerError.Send(ctx,
-			fmt.Sprintf("Error finding running hosts for user %s : %s", usr.Username(), err))
-	}
-	duration := time.Duration(5) * time.Minute
-	timestamp := time.Now().Add(-duration) // within last 5 minutes
-	recentlyTerminatedHosts, err := host.Find(host.ByUserRecentlyTerminated(usr.Username(), timestamp))
-	if err != nil {
-		return nil, gqlError.InternalServerError.Send(ctx,
-			fmt.Sprintf("Error finding recently terminated hosts for user %s : %s", usr.Username(), err))
-	}
-	hosts = append(hosts, recentlyTerminatedHosts...)
-
-	var apiHosts []*restModel.APIHost
-	for _, host := range hosts {
-		apiHost := restModel.APIHost{}
-		err = apiHost.BuildFromService(host)
-		if err != nil {
-			return nil, gqlError.InternalServerError.Send(ctx, fmt.Sprintf("Error building APIHost from service: %s", err.Error()))
-		}
-		apiHosts = append(apiHosts, &apiHost)
-	}
-	return apiHosts, nil
-}
-func (r *queryResolver) MyVolumes(ctx context.Context) ([]*restModel.APIVolume, error) {
-	usr := util.MustHaveUser(ctx)
-	volumes, err := host.FindSortedVolumesByUser(usr.Username())
-	if err != nil {
-		return nil, gqlError.InternalServerError.Send(ctx, err.Error())
-	}
-	return util.GetAPIVolumeList(volumes)
 }

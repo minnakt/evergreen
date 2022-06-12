@@ -1,7 +1,8 @@
 # This file lists all of the mutations. The mutation definitions can be found in the corresponding files in the resolvers folder.
 type Mutation {
   # annotations
-    addAnnotationIssue(
+  bbCreateTicket(taskId: String!, execution: Int): Boolean!
+  addAnnotationIssue(
     taskId: String!
     execution: Int!
     apiIssue: IssueLinkInput!
@@ -60,8 +61,6 @@ type Mutation {
   attachVolumeToHost(volumeAndHost: VolumeHost!): Boolean!
   detachVolumeFromHost(volumeId: String!): Boolean!
   editSpawnHost(spawnHost: EditSpawnHostInput): Host!
-  myHosts: [Host!]!
-  myVolumes: [Volume!]!
   spawnHost(spawnHostInput: SpawnHostInput): Host!
   spawnVolume(spawnVolumeInput: SpawnVolumeInput!): Boolean!
   removeVolume(volumeId: String!): Boolean!

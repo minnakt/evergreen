@@ -409,6 +409,7 @@ type ComplexityRoot struct {
 		AttachProjectToNewRepo        func(childComplexity int, project model.MoveProjectInput) int
 		AttachProjectToRepo           func(childComplexity int, projectID string) int
 		AttachVolumeToHost            func(childComplexity int, volumeAndHost model.VolumeHost) int
+		BbCreateTicket                func(childComplexity int, taskID string, execution *int) int
 		ClearMySubscriptions          func(childComplexity int) int
 		CopyProject                   func(childComplexity int, project data.CopyProjectOpts) int
 		CreateProject                 func(childComplexity int, project model1.APIProjectRef) int
@@ -421,8 +422,6 @@ type ComplexityRoot struct {
 		EnqueuePatch                  func(childComplexity int, patchID string, commitMessage *string) int
 		ForceRepotrackerRun           func(childComplexity int, projectID string) int
 		MoveAnnotationIssue           func(childComplexity int, taskID string, execution int, apiIssue model1.APIIssueLink, isIssue bool) int
-		MyHosts                       func(childComplexity int) int
-		MyVolumes                     func(childComplexity int) int
 		OverrideTaskDependencies      func(childComplexity int, taskID string) int
 		RemoveAnnotationIssue         func(childComplexity int, taskID string, execution int, apiIssue model1.APIIssueLink, isIssue bool) int
 		RemoveFavoriteProject         func(childComplexity int, identifier string) int
@@ -697,7 +696,9 @@ type ComplexityRoot struct {
 		Hosts                    func(childComplexity int, hostID *string, distroID *string, currentTaskID *string, statuses []string, startedBy *string, sortBy *model.HostSortBy, sortDir *model.SortDirection, page *int, limit *int) int
 		InstanceTypes            func(childComplexity int) int
 		MainlineCommits          func(childComplexity int, options model.MainlineCommitsOptions, buildVariantOptions *model.BuildVariantOptions) int
+		MyHosts                  func(childComplexity int) int
 		MyPublicKeys             func(childComplexity int) int
+		MyVolumes                func(childComplexity int) int
 		Patch                    func(childComplexity int, id string) int
 		PatchTasks               func(childComplexity int, patchID string, sorts []*model.SortOrder, page *int, limit *int, statuses []string, baseStatuses []string, variant *string, taskName *string, includeEmptyActivation *bool) int
 		Project                  func(childComplexity int, projectID string) int
@@ -1213,6 +1214,7 @@ type IssueLinkResolver interface {
 	JiraTicket(ctx context.Context, obj *model1.APIIssueLink) (*thirdparty.JiraTicket, error)
 }
 type MutationResolver interface {
+	BbCreateTicket(ctx context.Context, taskID string, execution *int) (bool, error)
 	AddAnnotationIssue(ctx context.Context, taskID string, execution int, apiIssue model1.APIIssueLink, isIssue bool) (bool, error)
 	EditAnnotationNote(ctx context.Context, taskID string, execution int, originalMessage string, newMessage string) (bool, error)
 	MoveAnnotationIssue(ctx context.Context, taskID string, execution int, apiIssue model1.APIIssueLink, isIssue bool) (bool, error)
@@ -1240,8 +1242,6 @@ type MutationResolver interface {
 	AttachVolumeToHost(ctx context.Context, volumeAndHost model.VolumeHost) (bool, error)
 	DetachVolumeFromHost(ctx context.Context, volumeID string) (bool, error)
 	EditSpawnHost(ctx context.Context, spawnHost *model.EditSpawnHostInput) (*model1.APIHost, error)
-	MyHosts(ctx context.Context) ([]*model1.APIHost, error)
-	MyVolumes(ctx context.Context) ([]*model1.APIVolume, error)
 	SpawnHost(ctx context.Context, spawnHostInput *model.SpawnHostInput) (*model1.APIHost, error)
 	SpawnVolume(ctx context.Context, spawnVolumeInput model.SpawnVolumeInput) (bool, error)
 	RemoveVolume(ctx context.Context, volumeID string) (bool, error)
@@ -1330,6 +1330,8 @@ type QueryResolver interface {
 	RepoEvents(ctx context.Context, id string, limit *int, before *time.Time) (*model.ProjectEvents, error)
 	RepoSettings(ctx context.Context, id string) (*model1.APIProjectSettings, error)
 	ViewableProjectRefs(ctx context.Context) ([]*model.GroupedProjects, error)
+	MyHosts(ctx context.Context) ([]*model1.APIHost, error)
+	MyVolumes(ctx context.Context) ([]*model1.APIVolume, error)
 	Task(ctx context.Context, taskID string, execution *int) (*model1.APITask, error)
 	TaskAllExecutions(ctx context.Context, taskID string) ([]*model1.APITask, error)
 	TaskFiles(ctx context.Context, taskID string, execution *int) (*model.TaskFiles, error)
@@ -2910,6 +2912,18 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Mutation.AttachVolumeToHost(childComplexity, args["volumeAndHost"].(model.VolumeHost)), true
 
+	case "Mutation.bbCreateTicket":
+		if e.complexity.Mutation.BbCreateTicket == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_bbCreateTicket_args(context.TODO(), rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.BbCreateTicket(childComplexity, args["taskId"].(string), args["execution"].(*int)), true
+
 	case "Mutation.clearMySubscriptions":
 		if e.complexity.Mutation.ClearMySubscriptions == nil {
 			break
@@ -3048,20 +3062,6 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Mutation.MoveAnnotationIssue(childComplexity, args["taskId"].(string), args["execution"].(int), args["apiIssue"].(model1.APIIssueLink), args["isIssue"].(bool)), true
-
-	case "Mutation.myHosts":
-		if e.complexity.Mutation.MyHosts == nil {
-			break
-		}
-
-		return e.complexity.Mutation.MyHosts(childComplexity), true
-
-	case "Mutation.myVolumes":
-		if e.complexity.Mutation.MyVolumes == nil {
-			break
-		}
-
-		return e.complexity.Mutation.MyVolumes(childComplexity), true
 
 	case "Mutation.overrideTaskDependencies":
 		if e.complexity.Mutation.OverrideTaskDependencies == nil {
@@ -4661,12 +4661,26 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Query.MainlineCommits(childComplexity, args["options"].(model.MainlineCommitsOptions), args["buildVariantOptions"].(*model.BuildVariantOptions)), true
 
+	case "Query.myHosts":
+		if e.complexity.Query.MyHosts == nil {
+			break
+		}
+
+		return e.complexity.Query.MyHosts(childComplexity), true
+
 	case "Query.myPublicKeys":
 		if e.complexity.Query.MyPublicKeys == nil {
 			break
 		}
 
 		return e.complexity.Query.MyPublicKeys(childComplexity), true
+
+	case "Query.myVolumes":
+		if e.complexity.Query.MyVolumes == nil {
+			break
+		}
+
+		return e.complexity.Query.MyVolumes(childComplexity), true
 
 	case "Query.patch":
 		if e.complexity.Query.Patch == nil {
@@ -7320,7 +7334,8 @@ directive @requireProjectAccess(access: ProjectSettingsAccess!) on ARGUMENT_DEFI
 	{Name: "graphql/schema/mutation.graphql", Input: `# This file lists all of the mutations. The mutation definitions can be found in the corresponding files in the resolvers folder.
 type Mutation {
   # annotations
-    addAnnotationIssue(
+  bbCreateTicket(taskId: String!, execution: Int): Boolean!
+  addAnnotationIssue(
     taskId: String!
     execution: Int!
     apiIssue: IssueLinkInput!
@@ -7379,8 +7394,6 @@ type Mutation {
   attachVolumeToHost(volumeAndHost: VolumeHost!): Boolean!
   detachVolumeFromHost(volumeId: String!): Boolean!
   editSpawnHost(spawnHost: EditSpawnHostInput): Host!
-  myHosts: [Host!]!
-  myVolumes: [Volume!]!
   spawnHost(spawnHostInput: SpawnHostInput): Host!
   spawnVolume(spawnVolumeInput: SpawnVolumeInput!): Boolean!
   removeVolume(volumeId: String!): Boolean!
@@ -7479,6 +7492,10 @@ type Query {
   ): ProjectEvents!
   repoSettings(id: String! @requireProjectAccess(access: VIEW)): RepoSettings!
   viewableProjectRefs: [GroupedProjects]!
+
+  # spawn
+  myHosts: [Host!]!
+  myVolumes: [Volume!]!
 
   # task
   task(taskId: String!, execution: Int): Task
@@ -9448,6 +9465,30 @@ func (ec *executionContext) field_Mutation_attachVolumeToHost_args(ctx context.C
 		}
 	}
 	args["volumeAndHost"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_bbCreateTicket_args(ctx context.Context, rawArgs map[string]interface{}) (map[string]interface{}, error) {
+	var err error
+	args := map[string]interface{}{}
+	var arg0 string
+	if tmp, ok := rawArgs["taskId"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("taskId"))
+		arg0, err = ec.unmarshalNString2string(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["taskId"] = arg0
+	var arg1 *int
+	if tmp, ok := rawArgs["execution"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("execution"))
+		arg1, err = ec.unmarshalOInt2ᚖint(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["execution"] = arg1
 	return args, nil
 }
 
@@ -17850,6 +17891,48 @@ func (ec *executionContext) _ModuleCodeChange_rawLink(ctx context.Context, field
 	return ec.marshalNString2ᚖstring(ctx, field.Selections, res)
 }
 
+func (ec *executionContext) _Mutation_bbCreateTicket(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   true,
+		IsResolver: true,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	rawArgs := field.ArgumentMap(ec.Variables)
+	args, err := ec.field_Mutation_bbCreateTicket_args(ctx, rawArgs)
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	fc.Args = args
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().BbCreateTicket(rctx, args["taskId"].(string), args["execution"].(*int))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
 func (ec *executionContext) _Mutation_addAnnotationIssue(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -19007,76 +19090,6 @@ func (ec *executionContext) _Mutation_editSpawnHost(ctx context.Context, field g
 	res := resTmp.(*model1.APIHost)
 	fc.Result = res
 	return ec.marshalNHost2ᚖgithubᚗcomᚋevergreenᚑciᚋevergreenᚋrestᚋmodelᚐAPIHost(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _Mutation_myHosts(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	fc := &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		Args:       nil,
-		IsMethod:   true,
-		IsResolver: true,
-	}
-
-	ctx = graphql.WithFieldContext(ctx, fc)
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().MyHosts(rctx)
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.([]*model1.APIHost)
-	fc.Result = res
-	return ec.marshalNHost2ᚕᚖgithubᚗcomᚋevergreenᚑciᚋevergreenᚋrestᚋmodelᚐAPIHostᚄ(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) _Mutation_myVolumes(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	fc := &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		Args:       nil,
-		IsMethod:   true,
-		IsResolver: true,
-	}
-
-	ctx = graphql.WithFieldContext(ctx, fc)
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().MyVolumes(rctx)
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.([]*model1.APIVolume)
-	fc.Result = res
-	return ec.marshalNVolume2ᚕᚖgithubᚗcomᚋevergreenᚑciᚋevergreenᚋrestᚋmodelᚐAPIVolumeᚄ(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Mutation_spawnHost(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -26026,6 +26039,76 @@ func (ec *executionContext) _Query_viewableProjectRefs(ctx context.Context, fiel
 	res := resTmp.([]*model.GroupedProjects)
 	fc.Result = res
 	return ec.marshalNGroupedProjects2ᚕᚖgithubᚗcomᚋevergreenᚑciᚋevergreenᚋgraphqlᚋmodelᚐGroupedProjects(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Query_myHosts(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   true,
+		IsResolver: true,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().MyHosts(rctx)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model1.APIHost)
+	fc.Result = res
+	return ec.marshalNHost2ᚕᚖgithubᚗcomᚋevergreenᚑciᚋevergreenᚋrestᚋmodelᚐAPIHostᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) _Query_myVolumes(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	fc := &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		Args:       nil,
+		IsMethod:   true,
+		IsResolver: true,
+	}
+
+	ctx = graphql.WithFieldContext(ctx, fc)
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().MyVolumes(rctx)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model1.APIVolume)
+	fc.Result = res
+	return ec.marshalNVolume2ᚕᚖgithubᚗcomᚋevergreenᚑciᚋevergreenᚋrestᚋmodelᚐAPIVolumeᚄ(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) _Query_task(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -43709,6 +43792,11 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("Mutation")
+		case "bbCreateTicket":
+			out.Values[i] = ec._Mutation_bbCreateTicket(ctx, field)
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
 		case "addAnnotationIssue":
 			out.Values[i] = ec._Mutation_addAnnotationIssue(ctx, field)
 			if out.Values[i] == graphql.Null {
@@ -43826,16 +43914,6 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			}
 		case "editSpawnHost":
 			out.Values[i] = ec._Mutation_editSpawnHost(ctx, field)
-			if out.Values[i] == graphql.Null {
-				invalids++
-			}
-		case "myHosts":
-			out.Values[i] = ec._Mutation_myHosts(ctx, field)
-			if out.Values[i] == graphql.Null {
-				invalids++
-			}
-		case "myVolumes":
-			out.Values[i] = ec._Mutation_myVolumes(ctx, field)
 			if out.Values[i] == graphql.Null {
 				invalids++
 			}
@@ -45573,6 +45651,34 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_viewableProjectRefs(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&invalids, 1)
+				}
+				return res
+			})
+		case "myHosts":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_myHosts(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&invalids, 1)
+				}
+				return res
+			})
+		case "myVolumes":
+			field := field
+			out.Concurrently(i, func() (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_myVolumes(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&invalids, 1)
 				}
