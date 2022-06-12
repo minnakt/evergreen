@@ -1,22 +1,3 @@
-extend type Query {
-  myPublicKeys: [PublicKey!]!
-  user(userId: String): User! 
-  userConfig: UserConfig
-  userSettings: UserSettings
-}
-
-extend type Mutation {
-  clearMySubscriptions: Int!
-  createPublicKey(publicKeyInput: PublicKeyInput!): [PublicKey!]!
-  removePublicKey(keyName: String!): [PublicKey!]!
-  saveSubscription(subscription: SubscriptionInput!): Boolean!
-  updatePublicKey(
-    targetKeyName: String!
-    updateInfo: PublicKeyInput!
-  ): [PublicKey!]!
-  updateUserSettings(userSettings: UserSettingsInput): Boolean!
-}
-
 ###### INPUTS ######
 """
 PublicKeyInput is an input to the createPublicKey and updatePublicKey mutations.

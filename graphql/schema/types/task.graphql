@@ -6,37 +6,6 @@ enum TestSortCategory {
   TEST_NAME
 }
 
-extend type Query {
-  task(taskId: String!, execution: Int): Task
-  taskAllExecutions(taskId: String!): [Task!]!
-  taskFiles(taskId: String!, execution: Int): TaskFiles!
-  taskLogs(taskId: String!, execution: Int): TaskLogs!
-  taskTests(
-    taskId: String!
-    execution: Int
-    sortCategory: TestSortCategory = TEST_NAME
-    sortDirection: SortDirection = ASC
-    page: Int = 0
-    limit: Int = 0
-    testName: String = ""
-    statuses: [String!]! = []
-    groupId: String = ""
-  ): TaskTestResult!
-  taskTestSample(
-    tasks: [String!]!
-    filters: [TestFilter!]!
-  ): [TaskTestResultSample!]
-}
-
-extend type Mutation {
-  abortTask(taskId: String!): Task!
-  overrideTaskDependencies(taskId: String!): Task!
-  restartTask(taskId: String!): Task!
-  scheduleTasks(taskIds: [String!]!): [Task!]!
-  setTaskPriority(taskId: String!, priority: Int!): Task!
-  unscheduleTask(taskId: String!): Task!
-}
-
 ###### INPUTS ######
 """
 TestFilter is an input value for the taskTestSample query.

@@ -6,30 +6,6 @@ enum TaskSortCategory {
   DURATION
 }
 
-extend type Query {
-  patch(id: String!): Patch!
-  patchTasks(
-    patchId: String!
-    sorts: [SortOrder!]
-    page: Int = 0
-    limit: Int = 0
-    statuses: [String!] = []
-    baseStatuses: [String!] = []
-    variant: String
-    taskName: String
-    includeEmptyActivation: Boolean = false
-  ): PatchTasks!
-}
-
-extend type Mutation {
-  enqueuePatch(patchId: String!, commitMessage: String): Patch!
-  schedulePatch(patchId: String!, configure: PatchConfigure!): Patch!
-  schedulePatchTasks(patchId: String!): String
-  scheduleUndispatchedBaseTasks(patchId: String!): [Task!]
-  setPatchPriority(patchId: String!, priority: Int!): String
-  unschedulePatchTasks(patchId: String!, abort: Boolean!): String
-}
-
 ###### INPUTS ######
 """
 PatchesInput is the input value to the patches field for the User and Project types.

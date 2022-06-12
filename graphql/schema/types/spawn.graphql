@@ -4,19 +4,6 @@ enum SpawnHostStatusActions {
   TERMINATE
 }
 
-extend type Mutation {
-  attachVolumeToHost(volumeAndHost: VolumeHost!): Boolean!
-  detachVolumeFromHost(volumeId: String!): Boolean!
-  editSpawnHost(spawnHost: EditSpawnHostInput): Host!
-  myHosts: [Host!]!
-  myVolumes: [Volume!]!
-  spawnHost(spawnHostInput: SpawnHostInput): Host!
-  spawnVolume(spawnVolumeInput: SpawnVolumeInput!): Boolean!
-  removeVolume(volumeId: String!): Boolean!
-  updateSpawnHostStatus(hostId: String!, action: SpawnHostStatusActions!): Host!
-  updateVolume(updateVolumeInput: UpdateVolumeInput!): Boolean!
-}
-
 ###### INPUTS ######
 """
 VolumeHost is the input to the attachVolumeToHost mutation.

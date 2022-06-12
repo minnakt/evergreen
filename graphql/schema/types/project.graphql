@@ -1,6 +1,3 @@
-directive @requireSuperUser on FIELD_DEFINITION 
-directive @requireProjectAccess(access: ProjectSettingsAccess!) on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
-
 enum ProjectSettingsAccess {
   EDIT
   VIEW
@@ -17,41 +14,6 @@ enum ProjectSettingsSection {
   TRIGGERS
   PERIODIC_BUILDS
   PLUGINS
-}
-
-extend type Query {
-  githubProjectConflicts(projectId: String!): GithubProjectConflicts!
-  project(projectId: String!): Project!
-  projects: [GroupedProjects]!
-  projectEvents(
-    identifier: String!
-    limit: Int = 0
-    before: Time
-    @requireProjectAccess(access: VIEW)
-  ): ProjectEvents!
-  projectSettings(identifier: String! @requireProjectAccess(access: VIEW)): ProjectSettings!
-  repoEvents(
-    id: String!
-    limit: Int = 0
-    before: Time
-    @requireProjectAccess(access: VIEW)
-  ): ProjectEvents!
-  repoSettings(id: String! @requireProjectAccess(access: VIEW)): RepoSettings!
-  viewableProjectRefs: [GroupedProjects]!
-}
-
-extend type Mutation {
-  addFavoriteProject(identifier: String!): Project!
-  attachProjectToNewRepo(project: MoveProjectInput!): Project!
-  attachProjectToRepo(projectId: String! @requireProjectAccess(access: EDIT)): Project!
-  createProject(project: CreateProjectInput!): Project! @requireSuperUser
-  copyProject(project: CopyProjectInput!): Project! @requireSuperUser
-  defaultSectionToRepo(projectId: String! @requireProjectAccess(access: EDIT), section: ProjectSettingsSection!): String
-  detachProjectFromRepo(projectId: String! @requireProjectAccess(access: EDIT)): Project!
-  forceRepotrackerRun(projectId: String! @requireProjectAccess(access: EDIT)): Boolean!
-  removeFavoriteProject(identifier: String!): Project!
-  saveProjectSettingsForSection(projectSettings: ProjectSettingsInput, section: ProjectSettingsSection!): ProjectSettings!
-  saveRepoSettingsForSection(repoSettings: RepoSettingsInput, section: ProjectSettingsSection!): RepoSettings!
 }
 
 ###### INPUTS ######

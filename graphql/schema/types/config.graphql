@@ -1,11 +1,3 @@
-extend type Query {
-  awsRegions: [String!]
-  clientConfig: ClientConfig
-  instanceTypes: [String!]!
-  spruceConfig: SpruceConfig
-  subnetAvailabilityZones: [String!]!
-}
-
 ###### TYPES ######
 """ 
 SpruceConfig defines settings that apply to all users of Evergreen.

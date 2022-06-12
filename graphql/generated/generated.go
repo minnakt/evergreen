@@ -7315,13 +7315,12 @@ func (ec *executionContext) introspectType(name string) (*introspection.Type, er
 }
 
 var sources = []*ast.Source{
-	{Name: "graphql/schema/annotations.graphql", Input: `extend type Query {
-  bbGetCreatedTickets(taskId: String!): [JiraTicket!]!
-  buildBaron(taskId: String!, execution: Int!): BuildBaron!
-}
-
-extend type Mutation {
-  addAnnotationIssue(
+	{Name: "graphql/schema/directives.graphql", Input: `directive @requireSuperUser on FIELD_DEFINITION 
+directive @requireProjectAccess(access: ProjectSettingsAccess!) on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION`, BuiltIn: false},
+	{Name: "graphql/schema/mutation.graphql", Input: `# This file lists all of the mutations. The mutation definitions can be found in the corresponding files in the resolvers folder.
+type Mutation {
+  # annotations
+    addAnnotationIssue(
     taskId: String!
     execution: Int!
     apiIssue: IssueLinkInput!
@@ -7345,9 +7344,185 @@ extend type Mutation {
     apiIssue: IssueLinkInput!
     isIssue: Boolean!
   ): Boolean!
-}
 
-###### INPUTS ######
+  # hosts
+  reprovisionToNew(hostIds: [String!]!): Int!
+  restartJasper(hostIds: [String!]!): Int!
+  updateHostStatus(
+    hostIds: [String!]!
+    status: String!
+    notes: String = ""
+  ): Int!
+
+  # patch
+  enqueuePatch(patchId: String!, commitMessage: String): Patch!
+  schedulePatch(patchId: String!, configure: PatchConfigure!): Patch!
+  schedulePatchTasks(patchId: String!): String
+  scheduleUndispatchedBaseTasks(patchId: String!): [Task!]
+  setPatchPriority(patchId: String!, priority: Int!): String
+  unschedulePatchTasks(patchId: String!, abort: Boolean!): String
+
+  # project
+  addFavoriteProject(identifier: String!): Project!
+  attachProjectToNewRepo(project: MoveProjectInput!): Project!
+  attachProjectToRepo(projectId: String! @requireProjectAccess(access: EDIT)): Project!
+  createProject(project: CreateProjectInput!): Project! @requireSuperUser
+  copyProject(project: CopyProjectInput!): Project! @requireSuperUser
+  defaultSectionToRepo(projectId: String! @requireProjectAccess(access: EDIT), section: ProjectSettingsSection!): String
+  detachProjectFromRepo(projectId: String! @requireProjectAccess(access: EDIT)): Project!
+  forceRepotrackerRun(projectId: String! @requireProjectAccess(access: EDIT)): Boolean!
+  removeFavoriteProject(identifier: String!): Project!
+  saveProjectSettingsForSection(projectSettings: ProjectSettingsInput, section: ProjectSettingsSection!): ProjectSettings!
+  saveRepoSettingsForSection(repoSettings: RepoSettingsInput, section: ProjectSettingsSection!): RepoSettings!
+
+  # spawn
+  attachVolumeToHost(volumeAndHost: VolumeHost!): Boolean!
+  detachVolumeFromHost(volumeId: String!): Boolean!
+  editSpawnHost(spawnHost: EditSpawnHostInput): Host!
+  myHosts: [Host!]!
+  myVolumes: [Volume!]!
+  spawnHost(spawnHostInput: SpawnHostInput): Host!
+  spawnVolume(spawnVolumeInput: SpawnVolumeInput!): Boolean!
+  removeVolume(volumeId: String!): Boolean!
+  updateSpawnHostStatus(hostId: String!, action: SpawnHostStatusActions!): Host!
+  updateVolume(updateVolumeInput: UpdateVolumeInput!): Boolean!
+
+  # task
+  abortTask(taskId: String!): Task!
+  overrideTaskDependencies(taskId: String!): Task!
+  restartTask(taskId: String!): Task!
+  scheduleTasks(taskIds: [String!]!): [Task!]!
+  setTaskPriority(taskId: String!, priority: Int!): Task!
+  unscheduleTask(taskId: String!): Task!
+
+  # user
+  clearMySubscriptions: Int!
+  createPublicKey(publicKeyInput: PublicKeyInput!): [PublicKey!]!
+  removePublicKey(keyName: String!): [PublicKey!]!
+  saveSubscription(subscription: SubscriptionInput!): Boolean!
+  updatePublicKey(
+    targetKeyName: String!
+    updateInfo: PublicKeyInput!
+  ): [PublicKey!]!
+  updateUserSettings(userSettings: UserSettingsInput): Boolean!
+
+  # version
+  removeItemFromCommitQueue(commitQueueId: String!, issue: String!): String
+  restartVersions(versionId: String!, abort: Boolean!, versionsToRestart: [VersionToRestart!]!): [Version!]
+}`, BuiltIn: false},
+	{Name: "graphql/schema/query.graphql", Input: `# This file lists all of the queries. The query definitions can be found in the corresponding files in the resolvers folder.
+type Query {
+  # annotations
+  bbGetCreatedTickets(taskId: String!): [JiraTicket!]!
+  buildBaron(taskId: String!, execution: Int!): BuildBaron!
+
+  # config
+  awsRegions: [String!]
+  clientConfig: ClientConfig
+  instanceTypes: [String!]!
+  spruceConfig: SpruceConfig
+  subnetAvailabilityZones: [String!]!
+
+  # hosts
+  distros(onlySpawnable: Boolean!): [Distro]!
+  distroTaskQueue(distroId: String!): [TaskQueueItem!]!
+  host(hostId: String!): Host
+  hostEvents(
+    hostId: String!
+    hostTag: String = ""
+    limit: Int = 0
+    page: Int = 0
+  ): HostEvents!
+  hosts(
+    hostId: String = ""
+    distroId: String = ""
+    currentTaskId: String = ""
+    statuses: [String!] = []
+    startedBy: String = ""
+    sortBy: HostSortBy = STATUS
+    sortDir: SortDirection = ASC
+    page: Int = 0
+    limit: Int = 10
+  ): HostsResponse!
+  taskQueueDistros: [TaskQueueDistro!]!
+
+  # patch
+  patch(id: String!): Patch!
+  patchTasks(
+    patchId: String!
+    sorts: [SortOrder!]
+    page: Int = 0
+    limit: Int = 0
+    statuses: [String!] = []
+    baseStatuses: [String!] = []
+    variant: String
+    taskName: String
+    includeEmptyActivation: Boolean = false
+  ): PatchTasks!
+
+  # project
+  githubProjectConflicts(projectId: String!): GithubProjectConflicts!
+  project(projectId: String!): Project!
+  projects: [GroupedProjects]!
+  projectEvents(
+    identifier: String!
+    limit: Int = 0
+    before: Time
+    @requireProjectAccess(access: VIEW)
+  ): ProjectEvents!
+  projectSettings(identifier: String! @requireProjectAccess(access: VIEW)): ProjectSettings!
+  repoEvents(
+    id: String!
+    limit: Int = 0
+    before: Time
+    @requireProjectAccess(access: VIEW)
+  ): ProjectEvents!
+  repoSettings(id: String! @requireProjectAccess(access: VIEW)): RepoSettings!
+  viewableProjectRefs: [GroupedProjects]!
+
+  # task
+  task(taskId: String!, execution: Int): Task
+  taskAllExecutions(taskId: String!): [Task!]!
+  taskFiles(taskId: String!, execution: Int): TaskFiles!
+  taskLogs(taskId: String!, execution: Int): TaskLogs!
+  taskTests(
+    taskId: String!
+    execution: Int
+    sortCategory: TestSortCategory = TEST_NAME
+    sortDirection: SortDirection = ASC
+    page: Int = 0
+    limit: Int = 0
+    testName: String = ""
+    statuses: [String!]! = []
+    groupId: String = ""
+  ): TaskTestResult!
+  taskTestSample(
+    tasks: [String!]!
+    filters: [TestFilter!]!
+  ): [TaskTestResultSample!]
+
+  # user
+  myPublicKeys: [PublicKey!]!
+  user(userId: String): User! 
+  userConfig: UserConfig
+  userSettings: UserSettings
+
+  # version
+  buildVariantsForTaskName(projectId: String!, taskName: String!): [BuildVariantTuple]
+  commitQueue(id: String!): CommitQueue!
+  hasVersion(id: String!): Boolean!
+  mainlineCommits(options: MainlineCommitsOptions!, buildVariantOptions: BuildVariantOptions): MainlineCommits
+  taskNamesForBuildVariant(projectId: String!, buildVariant: String!): [String!]
+  version(id: String!): Version!
+}`, BuiltIn: false},
+	{Name: "graphql/schema/scalars.graphql", Input: `# Define scalars used in other files.
+scalar Time
+scalar Duration
+scalar StringMap
+scalar Map
+
+`, BuiltIn: false},
+	{Name: "graphql/schema/types/annotations.graphql", Input: `###### INPUTS ######
 """ 
 IssueLinkInput is an input parameter to the annotation mutations.
 """
@@ -7432,32 +7607,7 @@ type JiraStatus {
 
 
 `, BuiltIn: false},
-	{Name: "graphql/schema/base.graphql", Input: `# Define the base types for Query & Mutation here so that other files can extend them.
-type Query
-
-type Mutation
-
-# Define scalars used in other files.
-scalar Time
-scalar Duration
-scalar StringMap
-scalar Map
-
-# Define shared enums.
-enum SortDirection {
-  ASC
-  DESC
-}
-`, BuiltIn: false},
-	{Name: "graphql/schema/config.graphql", Input: `extend type Query {
-  awsRegions: [String!]
-  clientConfig: ClientConfig
-  instanceTypes: [String!]!
-  spruceConfig: SpruceConfig
-  subnetAvailabilityZones: [String!]!
-}
-
-###### TYPES ######
+	{Name: "graphql/schema/types/config.graphql", Input: `###### TYPES ######
 """ 
 SpruceConfig defines settings that apply to all users of Evergreen.
 For example, if the banner field is populated, then a sitewide banner will be shown to all users.
@@ -7511,7 +7661,7 @@ type ClientBinary {
   url: String
 }
 `, BuiltIn: false},
-	{Name: "graphql/schema/hosts.graphql", Input: `enum HostSortBy {
+	{Name: "graphql/schema/types/hosts.graphql", Input: `enum HostSortBy {
   ID
   CURRENT_TASK
   DISTRO
@@ -7522,43 +7672,14 @@ type ClientBinary {
   UPTIME
 }
 
+enum SortDirection {
+  ASC
+  DESC
+}
+
 enum TaskQueueItemType {
   COMMIT
   PATCH
-}
-
-extend type Query {
-  distros(onlySpawnable: Boolean!): [Distro]!
-  distroTaskQueue(distroId: String!): [TaskQueueItem!]!
-  host(hostId: String!): Host
-  hostEvents(
-    hostId: String!
-    hostTag: String = ""
-    limit: Int = 0
-    page: Int = 0
-  ): HostEvents!
-  hosts(
-    hostId: String = ""
-    distroId: String = ""
-    currentTaskId: String = ""
-    statuses: [String!] = []
-    startedBy: String = ""
-    sortBy: HostSortBy = STATUS
-    sortDir: SortDirection = ASC
-    page: Int = 0
-    limit: Int = 10
-  ): HostsResponse!
-  taskQueueDistros: [TaskQueueDistro!]!
-}
-
-extend type Mutation {
-  reprovisionToNew(hostIds: [String!]!): Int!
-  restartJasper(hostIds: [String!]!): Int!
-  updateHostStatus(
-    hostIds: [String!]!
-    status: String!
-    notes: String = ""
-  ): Int!
 }
 
 ###### TYPES ######
@@ -7721,36 +7842,12 @@ type TaskQueueDistro {
 
 
 `, BuiltIn: false},
-	{Name: "graphql/schema/patch.graphql", Input: `enum TaskSortCategory {
+	{Name: "graphql/schema/types/patch.graphql", Input: `enum TaskSortCategory {
   NAME
   STATUS
   BASE_STATUS
   VARIANT
   DURATION
-}
-
-extend type Query {
-  patch(id: String!): Patch!
-  patchTasks(
-    patchId: String!
-    sorts: [SortOrder!]
-    page: Int = 0
-    limit: Int = 0
-    statuses: [String!] = []
-    baseStatuses: [String!] = []
-    variant: String
-    taskName: String
-    includeEmptyActivation: Boolean = false
-  ): PatchTasks!
-}
-
-extend type Mutation {
-  enqueuePatch(patchId: String!, commitMessage: String): Patch!
-  schedulePatch(patchId: String!, configure: PatchConfigure!): Patch!
-  schedulePatchTasks(patchId: String!): String
-  scheduleUndispatchedBaseTasks(patchId: String!): [Task!]
-  setPatchPriority(patchId: String!, priority: Int!): String
-  unschedulePatchTasks(patchId: String!, abort: Boolean!): String
 }
 
 ###### INPUTS ######
@@ -7946,10 +8043,7 @@ type PatchTasks {
 }
 
 `, BuiltIn: false},
-	{Name: "graphql/schema/project.graphql", Input: `directive @requireSuperUser on FIELD_DEFINITION 
-directive @requireProjectAccess(access: ProjectSettingsAccess!) on ARGUMENT_DEFINITION | INPUT_FIELD_DEFINITION
-
-enum ProjectSettingsAccess {
+	{Name: "graphql/schema/types/project.graphql", Input: `enum ProjectSettingsAccess {
   EDIT
   VIEW
 }
@@ -7965,41 +8059,6 @@ enum ProjectSettingsSection {
   TRIGGERS
   PERIODIC_BUILDS
   PLUGINS
-}
-
-extend type Query {
-  githubProjectConflicts(projectId: String!): GithubProjectConflicts!
-  project(projectId: String!): Project!
-  projects: [GroupedProjects]!
-  projectEvents(
-    identifier: String!
-    limit: Int = 0
-    before: Time
-    @requireProjectAccess(access: VIEW)
-  ): ProjectEvents!
-  projectSettings(identifier: String! @requireProjectAccess(access: VIEW)): ProjectSettings!
-  repoEvents(
-    id: String!
-    limit: Int = 0
-    before: Time
-    @requireProjectAccess(access: VIEW)
-  ): ProjectEvents!
-  repoSettings(id: String! @requireProjectAccess(access: VIEW)): RepoSettings!
-  viewableProjectRefs: [GroupedProjects]!
-}
-
-extend type Mutation {
-  addFavoriteProject(identifier: String!): Project!
-  attachProjectToNewRepo(project: MoveProjectInput!): Project!
-  attachProjectToRepo(projectId: String! @requireProjectAccess(access: EDIT)): Project!
-  createProject(project: CreateProjectInput!): Project! @requireSuperUser
-  copyProject(project: CopyProjectInput!): Project! @requireSuperUser
-  defaultSectionToRepo(projectId: String! @requireProjectAccess(access: EDIT), section: ProjectSettingsSection!): String
-  detachProjectFromRepo(projectId: String! @requireProjectAccess(access: EDIT)): Project!
-  forceRepotrackerRun(projectId: String! @requireProjectAccess(access: EDIT)): Boolean!
-  removeFavoriteProject(identifier: String!): Project!
-  saveProjectSettingsForSection(projectSettings: ProjectSettingsInput, section: ProjectSettingsSection!): ProjectSettings!
-  saveRepoSettingsForSection(repoSettings: RepoSettingsInput, section: ProjectSettingsSection!): RepoSettings!
 }
 
 ###### INPUTS ######
@@ -8583,23 +8642,10 @@ type ProjectAlias {
   variantTags: [String!]!
 }
 `, BuiltIn: false},
-	{Name: "graphql/schema/spawn.graphql", Input: `enum SpawnHostStatusActions {
+	{Name: "graphql/schema/types/spawn.graphql", Input: `enum SpawnHostStatusActions {
   START
   STOP
   TERMINATE
-}
-
-extend type Mutation {
-  attachVolumeToHost(volumeAndHost: VolumeHost!): Boolean!
-  detachVolumeFromHost(volumeId: String!): Boolean!
-  editSpawnHost(spawnHost: EditSpawnHostInput): Host!
-  myHosts: [Host!]!
-  myVolumes: [Volume!]!
-  spawnHost(spawnHostInput: SpawnHostInput): Host!
-  spawnVolume(spawnVolumeInput: SpawnVolumeInput!): Boolean!
-  removeVolume(volumeId: String!): Boolean!
-  updateSpawnHostStatus(hostId: String!, action: SpawnHostStatusActions!): Host!
-  updateVolume(updateVolumeInput: UpdateVolumeInput!): Boolean!
 }
 
 ###### INPUTS ######
@@ -8684,43 +8730,12 @@ input InstanceTagInput {
 
 
 `, BuiltIn: false},
-	{Name: "graphql/schema/task.graphql", Input: `enum TestSortCategory {
+	{Name: "graphql/schema/types/task.graphql", Input: `enum TestSortCategory {
   BASE_STATUS
   STATUS
   START_TIME
   DURATION
   TEST_NAME
-}
-
-extend type Query {
-  task(taskId: String!, execution: Int): Task
-  taskAllExecutions(taskId: String!): [Task!]!
-  taskFiles(taskId: String!, execution: Int): TaskFiles!
-  taskLogs(taskId: String!, execution: Int): TaskLogs!
-  taskTests(
-    taskId: String!
-    execution: Int
-    sortCategory: TestSortCategory = TEST_NAME
-    sortDirection: SortDirection = ASC
-    page: Int = 0
-    limit: Int = 0
-    testName: String = ""
-    statuses: [String!]! = []
-    groupId: String = ""
-  ): TaskTestResult!
-  taskTestSample(
-    tasks: [String!]!
-    filters: [TestFilter!]!
-  ): [TaskTestResultSample!]
-}
-
-extend type Mutation {
-  abortTask(taskId: String!): Task!
-  overrideTaskDependencies(taskId: String!): Task!
-  restartTask(taskId: String!): Task!
-  scheduleTasks(taskIds: [String!]!): [Task!]!
-  setTaskPriority(taskId: String!, priority: Int!): Task!
-  unscheduleTask(taskId: String!): Task!
 }
 
 ###### INPUTS ######
@@ -8965,26 +8980,7 @@ type TaskTestResultSample {
 }
 
 `, BuiltIn: false},
-	{Name: "graphql/schema/user.graphql", Input: `extend type Query {
-  myPublicKeys: [PublicKey!]!
-  user(userId: String): User! 
-  userConfig: UserConfig
-  userSettings: UserSettings
-}
-
-extend type Mutation {
-  clearMySubscriptions: Int!
-  createPublicKey(publicKeyInput: PublicKeyInput!): [PublicKey!]!
-  removePublicKey(keyName: String!): [PublicKey!]!
-  saveSubscription(subscription: SubscriptionInput!): Boolean!
-  updatePublicKey(
-    targetKeyName: String!
-    updateInfo: PublicKeyInput!
-  ): [PublicKey!]!
-  updateUserSettings(userSettings: UserSettingsInput): Boolean!
-}
-
-###### INPUTS ######
+	{Name: "graphql/schema/types/user.graphql", Input: `###### INPUTS ######
 """
 PublicKeyInput is an input to the createPublicKey and updatePublicKey mutations.
 """
@@ -9128,21 +9124,7 @@ type UseSpruceOptions {
 
 
 `, BuiltIn: false},
-	{Name: "graphql/schema/version.graphql", Input: `extend type Query {
-  buildVariantsForTaskName(projectId: String!, taskName: String!): [BuildVariantTuple]
-  commitQueue(id: String!): CommitQueue!
-  hasVersion(id: String!): Boolean!
-  mainlineCommits(options: MainlineCommitsOptions!, buildVariantOptions: BuildVariantOptions): MainlineCommits
-  taskNamesForBuildVariant(projectId: String!, buildVariant: String!): [String!]
-  version(id: String!): Version!
-}
-
-extend type Mutation {
-  removeItemFromCommitQueue(commitQueueId: String!, issue: String!): String
-  restartVersions(versionId: String!, abort: Boolean!, versionsToRestart: [VersionToRestart!]!): [Version!]
-}
-
-###### INPUTS ######
+	{Name: "graphql/schema/types/version.graphql", Input: `###### INPUTS ######
 """
 VersionToRestart is the input to the restartVersions mutation.
 It contains an array of taskIds to restart for a given versionId.

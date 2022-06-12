@@ -9,43 +9,14 @@ enum HostSortBy {
   UPTIME
 }
 
+enum SortDirection {
+  ASC
+  DESC
+}
+
 enum TaskQueueItemType {
   COMMIT
   PATCH
-}
-
-extend type Query {
-  distros(onlySpawnable: Boolean!): [Distro]!
-  distroTaskQueue(distroId: String!): [TaskQueueItem!]!
-  host(hostId: String!): Host
-  hostEvents(
-    hostId: String!
-    hostTag: String = ""
-    limit: Int = 0
-    page: Int = 0
-  ): HostEvents!
-  hosts(
-    hostId: String = ""
-    distroId: String = ""
-    currentTaskId: String = ""
-    statuses: [String!] = []
-    startedBy: String = ""
-    sortBy: HostSortBy = STATUS
-    sortDir: SortDirection = ASC
-    page: Int = 0
-    limit: Int = 10
-  ): HostsResponse!
-  taskQueueDistros: [TaskQueueDistro!]!
-}
-
-extend type Mutation {
-  reprovisionToNew(hostIds: [String!]!): Int!
-  restartJasper(hostIds: [String!]!): Int!
-  updateHostStatus(
-    hostIds: [String!]!
-    status: String!
-    notes: String = ""
-  ): Int!
 }
 
 ###### TYPES ######

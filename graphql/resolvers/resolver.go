@@ -1,5 +1,8 @@
 package resolvers
 
+// This file is always generated when running gqlgen.
+// It contains the declarations for the Query & Mutation resolver, which are used in the other files.
+
 import (
 	"context"
 	"fmt"
@@ -18,6 +21,15 @@ import (
 type Resolver struct {
 	sc data.Connector
 }
+
+// Mutation returns generated.MutationResolver implementation.
+func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }
+
+// Query returns generated.QueryResolver implementation.
+func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
+
+type mutationResolver struct{ *Resolver }
+type queryResolver struct{ *Resolver }
 
 func New(apiURL string) generated.Config {
 	c := generated.Config{

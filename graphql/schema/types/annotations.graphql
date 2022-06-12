@@ -1,35 +1,3 @@
-extend type Query {
-  bbGetCreatedTickets(taskId: String!): [JiraTicket!]!
-  buildBaron(taskId: String!, execution: Int!): BuildBaron!
-}
-
-extend type Mutation {
-  addAnnotationIssue(
-    taskId: String!
-    execution: Int!
-    apiIssue: IssueLinkInput!
-    isIssue: Boolean!
-  ): Boolean!
-  editAnnotationNote(
-    taskId: String!
-    execution: Int!
-    originalMessage: String!
-    newMessage: String!
-  ): Boolean!
-  moveAnnotationIssue(
-    taskId: String!
-    execution: Int!
-    apiIssue: IssueLinkInput!
-    isIssue: Boolean!
-  ): Boolean!
-  removeAnnotationIssue(
-    taskId: String!
-    execution: Int!
-    apiIssue: IssueLinkInput!
-    isIssue: Boolean!
-  ): Boolean!
-}
-
 ###### INPUTS ######
 """ 
 IssueLinkInput is an input parameter to the annotation mutations.

@@ -1,17 +1,3 @@
-extend type Query {
-  buildVariantsForTaskName(projectId: String!, taskName: String!): [BuildVariantTuple]
-  commitQueue(id: String!): CommitQueue!
-  hasVersion(id: String!): Boolean!
-  mainlineCommits(options: MainlineCommitsOptions!, buildVariantOptions: BuildVariantOptions): MainlineCommits
-  taskNamesForBuildVariant(projectId: String!, buildVariant: String!): [String!]
-  version(id: String!): Version!
-}
-
-extend type Mutation {
-  removeItemFromCommitQueue(commitQueueId: String!, issue: String!): String
-  restartVersions(versionId: String!, abort: Boolean!, versionsToRestart: [VersionToRestart!]!): [Version!]
-}
-
 ###### INPUTS ######
 """
 VersionToRestart is the input to the restartVersions mutation.
